@@ -1,0 +1,39 @@
+{
+  "_comment": "SYNTHETIC banking users with accounts + balances (THB). Consumed by get_balance tool. Includes one user with balance > 5000 THB (triggers conditional transfer path) and one < 5000 THB (blocks the transfer leg). No real money exists — UC2 NEVER moves money.",
+  "users": [
+    {
+      "user_id": "USR-001",
+      "display_name": "Ploy Wattana",
+      "primary_language": "th-TH",
+      "accounts": [
+        {"account_id": "ACC-001-SAV", "type": "savings", "currency": "THB", "balance_thb": 18500.00, "status": "active"},
+        {"account_id": "ACC-001-CUR", "type": "current", "currency": "THB", "balance_thb": 42000.00, "status": "active"}
+      ]
+    },
+    {
+      "user_id": "USR-002",
+      "display_name": "Somsak Jaidee",
+      "primary_language": "th-TH",
+      "accounts": [
+        {"account_id": "ACC-002-SAV", "type": "savings", "currency": "THB", "balance_thb": 3200.00, "status": "active"}
+      ]
+    },
+    {
+      "user_id": "USR-003",
+      "display_name": "Nutcha Srisuk",
+      "primary_language": "th-TH",
+      "accounts": [
+        {"account_id": "ACC-003-SAV", "type": "savings", "currency": "THB", "balance_thb": 9750.50, "status": "active"},
+        {"account_id": "ACC-003-CUR", "type": "current", "currency": "THB", "balance_thb": 1500.00, "status": "active"}
+      ]
+    },
+    {
+      "user_id": "USR-004",
+      "display_name": "Anan Phongsiri",
+      "primary_language": "en-US",
+      "accounts": [
+        {"account_id": "ACC-004-SAV", "type": "savings", "currency": "THB", "balance_thb": 250000.00, "status": "active"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+#
+# SCBX UC1 - SME Credit Memo Drafting
+# Sequential multi-agent orchestration: plan -> retrieve -> analyze -> bureau -> assemble.
+# Human approval is required before any memo is finalized (enforced by memo-orchestrator).
+#
+# This is a Microsoft Agent Framework declarative workflow (CSDL YAML). It is
+# registered as a Foundry workflow agent (definition.kind = "workflow") via
+# provision_foundry_agents.py and surfaces in the portal Workflows (Preview) tab.
+#
+kind: Workflow
+trigger:
+  kind: OnConversationStart
+  id: credit_memo_workflow
+  actions:
+    - kind: InvokeAzureAgent
+      id: plan_memo
+      displayName: Plan and coordinate
+      conversationId: =System.ConversationId
+      agent:
+        name: memo-orchestrator
+    - kind: InvokeAzureAgent
+      id: retrieve_docs
+      displayName: Retrieve grounded documents
+      conversationId: =System.ConversationId
+      agent:
+        name: doc-retrieval
+    - kind: InvokeAzureAgent
+      id: analyze_ratios
+      displayName: Interpret financial ratios
+      conversationId: =System.ConversationId
+      agent:
+        name: financial-ratio
+    - kind: InvokeAzureAgent
+      id: summarize_bureau
+      displayName: Summarize credit bureau
+      conversationId: =System.ConversationId
+      agent:
+        name: bureau-summary
+    - kind: InvokeAzureAgent
+      id: assemble_memo
+      displayName: Assemble draft memo
+      conversationId: =System.ConversationId
+      agent:
+        name: memo-assembler

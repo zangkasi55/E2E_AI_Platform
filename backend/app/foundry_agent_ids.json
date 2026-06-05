@@ -1,0 +1,8 @@
+{
+  "memo_orchestrator": "memo-orchestrator:3",
+  "doc_retrieval": "doc-retrieval:2",
+  "financial_ratio": "financial-ratio:2",
+  "bureau_summary": "bureau-summary:2",
+  "memo_assembler": "memo-assembler:2",
+  "banking_controller": "banking-controller:2"
+}

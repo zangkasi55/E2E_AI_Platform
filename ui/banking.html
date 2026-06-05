@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UC2 · Conversational Banking Control — Agent Flow</title>
+<style>
+  :root{
+    --agent:#0B5CAB; --agent2:#2E7DD1; --model:#5B2D8E; --tool:#0E7C7B;
+    --data:#2E7D32; --gov:#7A1FA2; --obs:#C25E00; --sec:#1A4E8A; --channel:#37474F;
+    --blocked:#B3261E; --ok:#2E7D32; --ink:#1A1A1A; --muted:#5F6B7A;
+    --bg:#F3F6FB; --card:#FFFFFF; --line:#E2E8F2;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.07);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--agent);text-decoration:none}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .topbar{background:#0B2A4A;color:#fff;padding:12px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .topbar .crumb{font-size:13px;color:#BFD3EC}.topbar .crumb b{color:#fff}
+  .topbar .spacer{flex:1}
+  .topbar .tag{font-size:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);padding:5px 10px;border-radius:6px}
+  .hero{padding:20px 22px 6px}
+  .hero h1{margin:0 0 4px;font-size:23px}.hero p{margin:0;color:var(--muted);font-size:14px}
+  .layout{display:grid;grid-template-columns:1fr 372px;gap:18px;padding:14px 22px 40px;align-items:start}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  .panel .ph{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .panel .ph h2{margin:0;font-size:14px;font-weight:700}.panel .ph .sub{font-size:12px;color:var(--muted);margin-left:auto}
+  .pad{padding:16px}
+
+  /* ---- chat ---- */
+  .chat{display:flex;flex-direction:column;gap:10px;max-height:236px;overflow-y:auto;padding:4px 2px 2px}
+  .msg{max-width:86%;padding:10px 13px;border-radius:14px;font-size:13.5px}
+  .msg.user{align-self:flex-end;background:var(--agent);color:#fff;border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-start;background:#EEF2F8;color:var(--ink);border-bottom-left-radius:4px}
+  .msg.bot.block{background:#FBEAE8;color:#7A1812;border:1px solid #F0C5C0}
+  .msg .who{font-size:11px;font-weight:700;opacity:.8;margin-bottom:2px}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  button.btn{font:inherit;font-size:13px;font-weight:600;border-radius:8px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);padding:9px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  button.btn:hover{border-color:#C9D6EC;background:#F8FAFD}
+  button.btn.primary{background:var(--tool);border-color:var(--tool);color:#fff}
+  button.btn.primary:hover{background:#0A6463}
+  button.btn.danger{background:#fff;border-color:#E3B0AB;color:var(--blocked)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  .switch{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:var(--ink);margin-left:auto;
+    border:1px solid var(--line);padding:7px 11px;border-radius:8px;background:#FBFDFF}
+  .switch input{display:none}
+  .track{width:38px;height:21px;border-radius:999px;background:#CBD5E3;position:relative;transition:.2s}
+  .track::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .switch input:checked + .track{background:var(--blocked)}
+  .switch input:checked + .track::after{transform:translateX(17px)}
+
+  /* ---- zones ---- */
+  .zone{border:1.5px solid var(--line);border-radius:12px;padding:12px 12px 14px;margin-top:12px;position:relative}
+  .zone .zh{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;margin-bottom:12px}
+  .zone.prob{border-color:#CADCF4;background:linear-gradient(180deg,#F7FAFE,#fff)}
+  .zone.prob .zh{color:var(--agent)}
+  .zone.det{border-color:#F0C8C4;background:linear-gradient(180deg,#FFF8F7,#fff)}
+  .zone.det .zh{color:var(--blocked)}
+  .zone .ztag{margin-left:auto;font-size:11px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0}
+  .boundary{display:flex;align-items:center;gap:10px;margin:12px 2px;color:var(--blocked);font-weight:700;font-size:12px}
+  .boundary .bl{flex:1;height:0;border-top:2px dashed var(--blocked);opacity:.6}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .snode{flex:1 1 0;min-width:150px;border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;
+    background:#fff;position:relative;transition:all .22s ease}
+  .snode .st{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    display:flex;align-items:center;gap:6px}
+  .snode .sn{font-weight:700;font-size:13.5px;margin-top:4px}
+  .snode .sd{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .snode .badge{margin-top:8px;display:inline-block}
+  .snode.pending{opacity:.55}
+  .snode.done{border-color:var(--ok);background:#F2F9F4}
+  .snode.done .st{color:var(--ok)}
+  .snode.working{border-color:var(--agent);box-shadow:0 0 0 4px rgba(11,92,171,.16);background:#fff}
+  .snode.working .st{color:var(--agent)}
+  .zone.det .snode.working{border-color:var(--tool);box-shadow:0 0 0 4px rgba(14,124,123,.18)}
+  .zone.det .snode.working .st{color:var(--tool)}
+  .snode.blocked{border-color:var(--blocked);background:#FBEAE8;box-shadow:0 0 0 4px rgba(179,38,30,.16)}
+  .snode.blocked .st{color:var(--blocked)}
+  .pulse-dot{width:8px;height:8px;border-radius:50%;background:currentColor;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.4}}
+  .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;border:1px solid transparent}
+  .b-tool{background:#E4F1F0;color:#0A5A59;border-color:#BBE0DE}
+  .b-apim{background:#EAF1FB;color:#0A4F93;border-color:#CADCF4}
+  .b-model{background:#F0EAF6;color:#46226E;border-color:#DDCBEE}
+  .b-gov{background:#F3E8F8;color:#5A1580;border-color:#E1C6EE}
+  .b-block{background:#FBE3E0;color:#8A1B14;border-color:#F0C0BB}
+  .apimbar{display:flex;align-items:center;gap:9px;font-size:11.5px;font-weight:700;color:#0A4F93;
+    background:#EAF1FB;border:1px dashed #9FC0EA;border-radius:8px;padding:7px 10px;margin-bottom:10px}
+  .ctrlcol{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .ctrlcol .gov{flex:1 1 0;min-width:150px;border:1.5px solid #E1C6EE;background:#FBF6FE;border-radius:10px;padding:10px 12px}
+  .ctrlcol .gov .st{font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--gov)}
+  .ctrlcol .gov .sn{font-weight:700;font-size:13px;margin-top:3px}
+  .ctrlcol .gov .sd{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .ctrlcol .gov.guard{border-color:#F0C8C4;background:#FFF6F5}
+  .ctrlcol .gov.guard .st{color:var(--blocked)}
+  .ctrlcol .gov.active{box-shadow:0 0 0 4px rgba(122,31,162,.14)}
+  .ctrlcol .gov.guard.active{box-shadow:0 0 0 4px rgba(179,38,30,.16)}
+
+  /* ---- step detail ---- */
+  .stepcard{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:14px;display:none}
+  .stepcard.show{display:block}
+  .stepcard .sh{display:flex;align-items:center;gap:10px;padding:11px 14px;background:#F8FAFD;border-bottom:1px solid var(--line)}
+  .stepcard .sh .stepno{width:25px;height:25px;border-radius:7px;background:var(--tool);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+  .stepcard .sh .stitle{font-weight:700;font-size:13.5px}
+  .stepcard .sh .who{margin-left:auto;font-size:11.5px;color:var(--muted);text-align:right}
+  .stepcard .sb{padding:13px}
+  .stepcard .sdetail{font-size:13px;color:#384150;margin:0 0 10px}
+  .params{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:#0F1B2D;color:#D6E2F2;border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre;margin:0 0 10px}
+  .result{border-left:3px solid var(--ok);background:#F2F9F4;padding:8px 11px;border-radius:0 8px 8px 0;font-size:12.5px;color:#234a2c}
+  .result.bad{border-left-color:var(--blocked);background:#FBEAE8;color:#7A1812}
+
+  /* ---- terminal handoff / banners ---- */
+  .terminal{margin-top:14px;display:none}.terminal.show{display:block}
+  .banner{display:flex;align-items:center;gap:10px;border-radius:10px;padding:11px 14px;font-weight:700;font-size:13.5px}
+  .banner.ok{background:#E7F4EA;color:#1E5C26;border:1px solid #Bfe3C6}
+  .banner.bad{background:#FBEAE8;color:#7A1812;border:1px solid #F0C5C0}
+  .handoff{margin-top:12px;border:1.5px solid var(--ok);border-radius:12px;overflow:hidden}
+  .handoff .hh{background:#EAF6EC;padding:10px 14px;font-weight:700;color:#1E5C26;display:flex;align-items:center;gap:8px}
+  .handoff .hb{padding:0}
+  .hobj{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:#0F1B2D;color:#D6E2F2;padding:13px 14px;white-space:pre;overflow-x:auto;margin:0}
+  .hk{color:#7FB0E6}.hs{color:#9BE3A0}.hbm{color:#F2A99F;font-weight:700}
+  .flags{display:flex;gap:8px;flex-wrap:wrap;padding:11px 14px}
+  .flag{font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:7px}
+  .flag.req{background:#FCEEDF;color:#8A4400;border:1px solid #F2D2B0}
+  .flag.no{background:#E7F4EA;color:#1E5C26;border:1px solid #Bfe3C6}
+
+  /* ---- right column ---- */
+  .tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .tcell{border:1px solid var(--line);border-radius:10px;padding:11px;text-align:center;background:#FBFDFF}
+  .tcell .k{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .tcell .v{font-size:21px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  .tcell.total{border-color:#BBE0DE;background:#E4F1F0}.tcell.total .v{color:var(--tool)}
+  .consumer{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#FBFDFF;margin-top:10px}
+  .consumer .mc{width:9px;height:9px;border-radius:3px;flex:none;background:var(--muted)}
+  .cost{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+  .tmeta{font-size:12px;color:var(--muted);margin-top:8px}
+  .audit{max-height:360px;overflow-y:auto;padding:8px 10px}
+  .arow{display:flex;gap:10px;padding:9px 8px;border-bottom:1px dashed var(--line);font-size:12.5px}
+  .arow:last-child{border-bottom:0}
+  .arow .an{width:22px;height:22px;border-radius:6px;background:var(--obs);color:#fff;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+  .arow.block .an{background:var(--blocked)}
+  .arow .at{color:#36404e;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;word-break:break-word}
+  .arow.audit-new{animation:slidein .4s ease}
+  @keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .empty{color:var(--muted);font-size:13px;text-align:center;padding:22px 10px}
+  @media (max-width:980px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="crumb"><a href="index.html" style="color:#BFD3EC">Demo Hub</a> / <b>UC2 · Conversational Banking Control</b></span>
+  <span class="spacer"></span>
+  <span class="tag">deterministic control</span>
+  <span class="tag">run <span id="runId">—</span></span>
+  <span class="tag" style="background:rgba(179,38,30,.25)">no money movement</span>
+</div>
+
+<div class="hero">
+  <h1>Conversational banking — probabilistic reasoning, deterministic control</h1>
+  <p><code>banking_controller</code> decomposes the request and fills slots in the probabilistic zone; every tool runs
+    through the deterministic APIM control boundary. Terminal action is an auditable handoff — the agent moves no money.</p>
+</div>
+
+<div class="layout">
+  <!-- LEFT -->
+  <section class="panel">
+    <div class="ph"><h2>banking_controller</h2><span class="sub" id="phaseLabel">idle</span></div>
+    <div class="pad">
+      <!-- Chat -->
+      <div class="chat" id="chat">
+        <div class="msg user"><div class="who">User · U-88231</div><span id="userMsg"></span></div>
+      </div>
+      <div class="toolbar">
+        <button class="btn primary" id="sendBtn">▶ Send &amp; run</button>
+        <button class="btn" id="resetBtn">↺ Reset</button>
+        <label class="switch" title="Append an unsafe directive that tries to bypass controls">
+          <input type="checkbox" id="unsafeToggle"><span class="track"></span>
+          <span>Unsafe-instruction demo</span>
+        </label>
+      </div>
+
+      <!-- Probabilistic zone -->
+      <div class="zone prob">
+        <div class="zh">◆ Probabilistic AI zone <span class="ztag">Foundry Agent Service + Azure OpenAI · reasoning</span></div>
+        <div class="row">
+          <div class="snode pending" id="s-intent_decomposition">
+            <div class="st"><span class="ind"></span>step 1</div>
+            <div class="sn">Intent decomposition</div>
+            <div class="sd">QUERY_BALANCE → TRANSFER_MONEY · SEQUENTIAL_CONDITIONAL</div>
+          </div>
+          <div class="snode pending" id="s-slot_filling">
+            <div class="st"><span class="ind"></span>step 2</div>
+            <div class="sn">Slot filling</div>
+            <div class="sd">amount=2000 · payee=mom · source account</div>
+          </div>
+          <div class="snode pending" id="s-conditional_eval">
+            <div class="st"><span class="ind"></span>step 4</div>
+            <div class="sn">Conditional logic</div>
+            <div class="sd">balance &gt; 5,000 THB ?</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="boundary"><span class="bl"></span>▲ probabilistic · deterministic ▼<span class="bl"></span></div>
+
+      <!-- Deterministic control zone -->
+      <div class="zone det">
+        <div class="zh">▣ Deterministic control zone <span class="ztag">enforced, not prompt-driven</span></div>
+        <div class="apimbar">⛬ Azure API Management — tool-scope enforcement · per-call policy decision · audit log</div>
+        <div class="row">
+          <div class="snode pending" id="s-balance_lookup">
+            <div class="st"><span class="ind"></span>step 3 · tool</div>
+            <div class="sn">get_balance</div>
+            <div class="sd">(user_id, account_id)</div>
+            <span class="badge b-apim">via APIM</span>
+          </div>
+          <div class="snode pending" id="s-payee_resolution">
+            <div class="st"><span class="ind"></span>step 5 · tool</div>
+            <div class="sn">resolve_payee</div>
+            <div class="sd">(user_id, payee_alias)</div>
+            <span class="badge b-apim">via APIM</span>
+          </div>
+          <div class="snode pending" id="s-eligibility_check">
+            <div class="st"><span class="ind"></span>step 6 · tool</div>
+            <div class="sn">check_transfer_eligibility</div>
+            <div class="sd">(user, src, payee, amount)</div>
+            <span class="badge b-apim">via APIM</span>
+          </div>
+          <div class="snode pending" id="s-handoff">
+            <div class="st"><span class="ind"></span>step 7 · terminal</div>
+            <div class="sn">request_transaction_handoff</div>
+            <div class="sd">(intent, slots, policy_result)</div>
+            <span class="badge b-block">handoff only</span>
+          </div>
+        </div>
+        <div class="ctrlcol">
+          <div class="gov" id="g-pdp">
+            <div class="st">Policy Decision Point</div>
+            <div class="sn">RBAC + ABAC + policy</div>
+            <div class="sd">Permits each tool call independently of the prompt.</div>
+          </div>
+          <div class="gov guard" id="g-guard">
+            <div class="st">Guardrails</div>
+            <div class="sn">Unsafe-intent blocking</div>
+            <div class="sd">Rule-bypass &amp; OTP-skip are non-overridable.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step detail -->
+      <div class="stepcard" id="stepCard"></div>
+
+      <!-- Terminal -->
+      <div class="terminal" id="terminal"></div>
+    </div>
+  </section>
+
+  <!-- RIGHT -->
+  <aside style="display:flex;flex-direction:column;gap:18px">
+    <section class="panel">
+      <div class="ph"><h2>Token usage</h2><span class="sub">live · per run</span></div>
+      <div class="pad">
+        <div class="tgrid">
+          <div class="tcell"><div class="k">Prompt</div><div class="v" id="tkPrompt">0</div></div>
+          <div class="tcell"><div class="k">Completion</div><div class="v" id="tkComp">0</div></div>
+          <div class="tcell total"><div class="k">Total</div><div class="v" id="tkTotal">0</div></div>
+        </div>
+        <div class="consumer"><span class="mc" id="consumerDot"></span><span id="consumerTxt">No model call yet</span>
+          <span class="cost" id="costTxt">$0.0000</span></div>
+        <div class="tmeta">Deterministic tool calls consume no model tokens — only reasoning steps do.</div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="ph"><h2>Audit trail</h2><span class="sub" id="auditCount">0 records</span></div>
+      <div class="audit" id="auditList"><div class="empty">Each step appends a structured audit record.</div></div>
+    </section>
+  </aside>
+</div>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var A = window.AGPOC;
+  var runOk = A.getRun("banking"), runBad = A.getRun("banking_blocked");
+  document.getElementById("runId").textContent = runOk.run_id;
+  document.getElementById("userMsg").textContent = runOk.message;
+
+  var chat=document.getElementById("chat"), userMsg=document.getElementById("userMsg");
+  var stepCard=document.getElementById("stepCard"), terminal=document.getElementById("terminal");
+  var phaseLabel=document.getElementById("phaseLabel");
+  var sendBtn=document.getElementById("sendBtn"), resetBtn=document.getElementById("resetBtn"),
+      unsafe=document.getElementById("unsafeToggle");
+
+  var STAGE_IDS=["intent_decomposition","slot_filling","conditional_eval","balance_lookup",
+                 "payee_resolution","eligibility_check","handoff"];
+  function nodeEl(stage){ return document.getElementById("s-"+stage); }
+  function setStage(stage,state){
+    var el=nodeEl(stage); if(!el) return;
+    el.classList.remove("pending","working","done","blocked"); el.classList.add(state);
+    var ind=el.querySelector(".ind");
+    if(ind) ind.outerHTML = state==="working" ? '<span class="pulse-dot ind"></span>' : '<span class="ind"></span>';
+  }
+  function resetStages(){
+    STAGE_IDS.forEach(function(s){ var el=nodeEl(s); el.className="snode pending";
+      var ind=el.querySelector(".ind, .pulse-dot"); if(ind) ind.outerHTML='<span class="ind"></span>'; });
+    document.getElementById("g-pdp").classList.remove("active");
+    document.getElementById("g-guard").classList.remove("active");
+  }
+
+  // token + audit
+  var live={prompt:0,completion:0,total:0}, runningCost=0;
+  var tkP=document.getElementById("tkPrompt"),tkC=document.getElementById("tkComp"),tkT=document.getElementById("tkTotal"),
+      costEl=document.getElementById("costTxt"),consumerTxt=document.getElementById("consumerTxt"),consumerDot=document.getElementById("consumerDot");
+  function animateTo(el,from,to){var s=performance.now(),d=600;function f(n){var k=Math.min(1,(n-s)/d);
+    el.textContent=Math.round(from+(to-from)*(1-Math.pow(1-k,3))).toLocaleString();if(k<1)requestAnimationFrame(f);}requestAnimationFrame(f);}
+  function applyTokens(s){
+    if(!s.tokens||!s.model) return;
+    var p0=live.prompt,c0=live.completion,t0=live.total;
+    live.prompt+=s.tokens.prompt;live.completion+=s.tokens.completion;live.total=live.prompt+live.completion;
+    animateTo(tkP,p0,live.prompt);animateTo(tkC,c0,live.completion);animateTo(tkT,t0,live.total);
+    var cost=A.estCost(s.model,s.tokens.prompt,s.tokens.completion);runningCost+=cost;costEl.textContent="$"+runningCost.toFixed(4);
+    consumerDot.style.background=s.model==="gpt-4o"?"var(--model)":"#8A6DB3";
+    consumerTxt.innerHTML='<b>'+s.stage+'</b> · '+s.model+' · +'+(s.tokens.prompt+s.tokens.completion).toLocaleString()+' tok';
+  }
+  var auditList=document.getElementById("auditList"),auditCount=document.getElementById("auditCount"),auditN=0;
+  function pushAudit(text,bad){
+    if(auditN===0) auditList.innerHTML="";auditN++;
+    var r=document.createElement("div");r.className="arow audit-new"+(bad?" block":"");
+    r.innerHTML='<div class="an">'+auditN+'</div><div class="at">'+text+'</div>';
+    auditList.appendChild(r);auditList.scrollTop=auditList.scrollHeight;
+    auditCount.textContent=auditN+" record"+(auditN===1?"":"s");
+  }
+  function botMsg(html,block){
+    var m=document.createElement("div");m.className="msg bot"+(block?" block":"");
+    m.innerHTML='<div class="who">banking_controller</div>'+html;chat.appendChild(m);chat.scrollTop=chat.scrollHeight;
+  }
+
+  function renderStep(s){
+    stepCard.classList.add("show");
+    var who = s.model? '<span class="badge b-model">'+s.model+'</span>' : '<span class="badge b-apim">deterministic · no model</span>';
+    var tool="";
+    if(s.tool){ tool+='<span class="badge b-tool">'+s.tool+' '+A.TOOLS[s.tool].sig+'</span>'; }
+    if(s.apim) tool+='<span class="badge b-apim">via APIM</span>';
+    if(s.stage==="eligibility_check"&&!s.blocked) tool+='<span class="badge b-gov">PDP permit</span>';
+    if(s.blocked) tool+='<span class="badge b-block">guardrail BLOCK</span>';
+    var params = s.params? '<div class="params">'+JSON.stringify(s.params,null,2)+'</div>':'';
+    stepCard.innerHTML=
+      '<div class="sh"><div class="stepno">'+s.step+'</div><div class="stitle">'+s.title+'</div>'+
+      '<div class="who"><b>'+(s.stage||s.agent)+'</b><br>'+(s.zone==="prob"?'probabilistic':'deterministic')+'</div></div>'+
+      '<div class="sb"><p class="sdetail">'+s.detail+'</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+who+tool+'</div>'+
+      params+'<div class="result'+(s.blocked?' bad':'')+'">'+s.result+'</div></div>';
+  }
+
+  function showHandoff(h){
+    terminal.classList.add("show");
+    terminal.innerHTML=
+      '<div class="banner ok">✓ No money moved — handoff only. Execution requires customer confirmation + step-up auth.</div>'+
+      '<div class="handoff"><div class="hh">⎙ Auditable handoff object</div><div class="hb">'+
+      '<pre class="hobj">{\n'+
+      '  <span class="hk">"handoff_id"</span>: <span class="hs">"'+h.handoff_id+'"</span>,\n'+
+      '  <span class="hk">"intent"</span>: <span class="hs">"'+h.intent+'"</span>,\n'+
+      '  <span class="hk">"slots"</span>: { <span class="hk">"amount"</span>: '+h.slots.amount+', <span class="hk">"currency"</span>: <span class="hs">"THB"</span>, <span class="hk">"payee_id"</span>: <span class="hs">"'+h.slots.payee_id+'"</span> },\n'+
+      '  <span class="hk">"policy_result"</span>: <span class="hs">"'+h.policy_result+'"</span>,\n'+
+      '  <span class="hbm">"requires_confirmation"</span>: <span class="hbm">true</span>,\n'+
+      '  <span class="hbm">"requires_step_up_auth"</span>: <span class="hbm">true</span>,\n'+
+      '  <span class="hk">"money_moved"</span>: <span class="hbm">false</span>,\n'+
+      '  <span class="hk">"tool_trace"</span>: ['+h.tool_trace.map(function(t){return '<span class="hs">"'+t+'"</span>';}).join(", ")+']\n}</pre>'+
+      '<div class="flags"><span class="flag req">requires_confirmation: true</span>'+
+      '<span class="flag req">requires_step_up_auth: true</span>'+
+      '<span class="flag no">money_moved: false</span></div></div></div>';
+  }
+  function showBlocked(){
+    terminal.classList.add("show");
+    terminal.innerHTML=
+      '<div class="banner bad">⛔ Guardrail blocked the request — unsafe directive cannot override the control policy. No tools invoked, no handoff created.</div>';
+  }
+
+  // ---- run control ----
+  var player=null, running=false;
+  function buildPlayer(){
+    var run = unsafe.checked ? runBad : runOk;
+    userMsg.textContent = run.message;
+    player = A.player(run.steps, { interval: 1700 });
+    player.on("step", function(e){
+      if(e.resumeFrom!==undefined) return;
+      var s=e.step;
+      phaseLabel.textContent=s.title;
+      // highlight stage
+      STAGE_IDS.forEach(function(id){ var el=nodeEl(id); if(el.classList.contains("working")) setStage(id,"done"); });
+      if(s.blocked){
+        document.getElementById("g-guard").classList.add("active");
+        setStage("eligibility_check","blocked");
+        document.getElementById("g-pdp").classList.remove("active");
+      } else {
+        setStage(s.stage,"working");
+        if(s.stage==="balance_lookup"||s.stage==="payee_resolution") document.getElementById("g-pdp").classList.add("active");
+        if(s.stage==="eligibility_check") document.getElementById("g-pdp").classList.add("active");
+      }
+      renderStep(s);
+      applyTokens(s);
+      pushAudit(s.audit, !!s.blocked);
+    });
+    player.on("done", function(e){
+      running=false; sendBtn.disabled=false; sendBtn.textContent="▶ Send & run"; unsafe.disabled=false;
+      phaseLabel.textContent = e.blocked? "blocked" : "complete";
+      if(e.blocked){ showBlocked(); botMsg("I can’t do that. Bypassing bank rules or skipping OTP isn’t permitted — the control layer blocked this request. No transfer was attempted.", true); }
+      else {
+        var last=runOk.steps[runOk.steps.length-1];
+        // mark final stage done
+        setStage("handoff","done");
+        showHandoff(last.handoff);
+        botMsg("Your balance is <b>7,450 THB</b>. I’ve prepared a transfer of <b>2,000 THB to mom</b>. <b>No money has moved</b> — please confirm and complete step-up authentication to execute.");
+      }
+    });
+  }
+
+  function fullReset(){
+    if(player) player.stop();
+    resetStages(); stepCard.classList.remove("show"); stepCard.innerHTML="";
+    terminal.classList.remove("show"); terminal.innerHTML="";
+    live={prompt:0,completion:0,total:0}; runningCost=0; auditN=0;
+    tkP.textContent="0";tkC.textContent="0";tkT.textContent="0";costEl.textContent="$0.0000";
+    consumerTxt.textContent="No model call yet"; consumerDot.style.background="var(--muted)";
+    auditList.innerHTML='<div class="empty">Each step appends a structured audit record.</div>'; auditCount.textContent="0 records";
+    phaseLabel.textContent="idle";
+    // reset chat to just the user message
+    chat.innerHTML='<div class="msg user"><div class="who">User · U-88231</div><span id="userMsg"></span></div>';
+    userMsg=document.getElementById("userMsg");
+    userMsg.textContent = unsafe.checked ? runBad.message : runOk.message;
+    running=false; sendBtn.disabled=false; sendBtn.textContent="▶ Send & run";
+  }
+
+  sendBtn.addEventListener("click", function(){
+    if(running) return;
+    fullReset(); buildPlayer();
+    running=true; sendBtn.disabled=true; sendBtn.textContent="running…"; unsafe.disabled=true;
+    player.play();
+  });
+  resetBtn.addEventListener("click", function(){ unsafe.disabled=false; fullReset(); });
+  unsafe.addEventListener("change", function(){ fullReset(); });
+
+  // init message text
+  userMsg.textContent = runOk.message;
+})();
+</script>
+</body>
+</html>

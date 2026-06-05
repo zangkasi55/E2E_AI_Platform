@@ -1,0 +1,37 @@
+SENSITIVITY: HIGHLY CONFIDENTIAL — DO NOT DISTRIBUTE
+Microsoft Purview Label: Highly Confidential \ Board & Legal
+Label ID: 9f8c7b6a-5d4e-4c3b-2a1f-0e9d8c7b6a5f
+Applied by: dlp-auto-labeling@scbx.local · Protected (encryption + watermark)
+============================================================
+SYNTHETIC TEST DOCUMENT — Purview enforcement validation only.
+This file intentionally carries a HIGHLY CONFIDENTIAL sensitivity label so the
+credit-memo agent's Purview/DSPM gate REJECTS it on upload. It must never be
+ingested into a credit memo or sent to any model.
+============================================================
+
+BOARD OF DIRECTORS — CONFIDENTIAL RESOLUTION
+Siam Lotus Foods Co., Ltd. (APP-1001)
+Resolution ref: BR-2026-014 · Board meeting: 12 June 2026 (in camera)
+
+1. M&A — PROJECT ORCHID (STRICTLY PRIVILEGED)
+   - Approved exclusivity to acquire a competitor cold-chain operator.
+   - Indicative enterprise value: THB 480,000,000 (not public, embargoed).
+   - Funding: undisclosed related-party bridge facility + new senior debt.
+
+2. UNDISCLOSED CONTINGENT LIABILITY
+   - Pending tax assessment dispute, exposure up to THB 36,000,000.
+   - Not yet reflected in the statutory accounts shared with lenders.
+
+3. KEY-PERSON / INSIDER MATTERS
+   - Finance Director succession plan and individual compensation details.
+   - Personal guarantees and personal financial data of directors.
+
+4. LEGAL PRIVILEGE
+   - Outside-counsel memorandum on litigation strategy (attorney-client
+     privileged). Disclosure waives privilege.
+
+------------------------------------------------------------
+HANDLING: Restricted to named board members. Any agent, automation, or
+downstream system attempting to read this content must block and raise a Data
+Security Posture Management (DSPM for AI) alert to Microsoft Purview.
+------------------------------------------------------------

@@ -1,0 +1,30 @@
+{
+  "policy_id": "dp-purview-credit-memo-001",
+  "name": "Credit Memo Data Governance Policy",
+  "owner": "Data Governance Office",
+  "platform": "Microsoft Purview",
+  "scope": [
+    "credit_memo",
+    "banking"
+  ],
+  "controls": [
+    {
+      "id": "DP-01",
+      "title": "Classify sensitive financial and customer attributes",
+      "requirement": "All applicant and customer records are classified with Purview labels before retrieval.",
+      "purview_capability": "Auto classification + glossary term mapping"
+    },
+    {
+      "id": "DP-02",
+      "title": "Lineage and source grounding",
+      "requirement": "Each memo statement must map to an approved source document and lineage entry.",
+      "purview_capability": "Lineage graph + catalog metadata"
+    },
+    {
+      "id": "DP-03",
+      "title": "Retention and auditability",
+      "requirement": "Run traces and policy decisions must be retained for 365 days.",
+      "purview_capability": "Data estate governance and retention oversight"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+# =============================================================================
+# terraform.tfvars.example
+# Copy to terraform.tfvars and adjust. Every value has a sensible default in
+# variables.tf, so you can also run `terraform apply` with NO tfvars at all to
+# reproduce the canonical `dev` environment.
+# =============================================================================
+
+name_prefix         = "agpoc"
+environment         = "dev"
+location            = "southeastasia"
+resource_group_name = "rg-agentic-poc-sea"
+
+# --- Azure OpenAI capacities (thousands of TPM) ---
+gpt4o_capacity      = 20
+gpt4o_mini_capacity = 50
+
+# --- APIM ---
+apim_publisher_email = "datax-techx@example.com"
+apim_publisher_name  = "DataX TechX Agentic PoC"
+# entra_tenant_id    = "00000000-0000-0000-0000-000000000000"  # defaults to deployer tenant
+tool_bridge_audience = "api://agpoc-tool-bridge"
+required_scope       = "tools.execute"
+
+# --- Container Apps image (swap for your ACR image after first backend build) ---
+orchestrator_image = "mcr.microsoft.com/k8se/quickstart:latest"
+
+# --- Purview (reuse the tenant's single account by default) ---
+use_existing_purview                 = true
+existing_purview_resource_group_name = "rg-isaru66-purview"
+existing_purview_account_name        = "pview-isaru66-default-001"
+
+# --- Defender for Cloud ---
+enable_standard_cspm       = true
+enable_defender_paid_plans = true
+
+# --- Static Web App ---
+deploy_static_web_app   = true
+static_web_app_location = "eastasia"
+
+tags = {
+  project     = "agentic-ai-poc"
+  environment = "dev"
+  owner       = "datax-techx"
+  workload    = "agentic-ai-platform"
+  managed-by  = "terraform"
+}

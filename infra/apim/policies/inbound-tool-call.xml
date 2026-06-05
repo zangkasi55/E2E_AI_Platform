@@ -1,0 +1,117 @@
+<!--
+  =============================================================================
+  inbound-tool-call.xml
+  APIM inbound policy for the Agentic AI PoC TOOL BRIDGE (agpoc-apim-dev).
+  This is the DETERMINISTIC ZONE: identity, scope, PII redaction, rate limit,
+  and logging are enforced here by configuration — NOT by the LLM prompt.
+
+  Pipeline order (inbound):
+    (1) validate-jwt   -> Entra token must be valid for this tenant/audience
+    (2) scope check    -> required per-tool scope/app-role claim must be present
+    (3) rate-limit     -> per-subscription throttle
+    (4) PII redaction  -> field-level find-and-replace stub on the response
+    (5) set-backend    -> route to the Functions tool host
+    (6) logging        -> via App Insights diagnostics configured on the API
+
+  Named values referenced (create in APIM > Named values):
+    {{tenant-id}}             - Entra tenant GUID
+    {{tool-bridge-audience}}  - api://agpoc-tool-bridge  (App ID URI)
+    {{required-scope}}        - default required scope, e.g. tools.execute
+    {{tools-backend-url}}     - https://agpoc-func-tools-dev.azurewebsites.net/api
+
+  XML NOTE: expressions embedded in ATTRIBUTES escape inner double quotes as
+  &quot; and avoid '<'/'&' so the policy stays valid XML (APIM requirement).
+  =============================================================================
+-->
+<policies>
+  <inbound>
+    <base />
+
+    <!-- (1) VALIDATE-JWT against Entra. Rejects missing/expired/forged tokens.
+         openid-config is the tenant's v2.0 metadata; signing keys auto-refresh. -->
+    <validate-jwt header-name="Authorization"
+                  failed-validation-httpcode="401"
+                  failed-validation-error-message="Unauthorized: invalid or missing Entra token."
+                  require-expiration-time="true"
+                  require-signed-tokens="true"
+                  output-token-variable-name="jwt">
+      <openid-config url="https://login.microsoftonline.com/{{tenant-id}}/v2.0/.well-known/openid-configuration" />
+      <audiences>
+        <audience>{{tool-bridge-audience}}</audience>
+      </audiences>
+      <issuers>
+        <issuer>https://login.microsoftonline.com/{{tenant-id}}/v2.0</issuer>
+        <issuer>https://sts.windows.net/{{tenant-id}}/</issuer>
+      </issuers>
+    </validate-jwt>
+
+    <!-- (2) PER-CALL SCOPE CHECK. The required scope can be overridden per
+         operation via a request header set in the operation policy
+         (x-required-scope) so each tool demands its own scope, e.g.
+           search_documents            -> tools.read
+           request_transaction_handoff -> tools.handoff
+         Falls back to the {{required-scope}} named value. The token must carry
+         the scope in EITHER the delegated `scp` claim OR an app `roles` claim. -->
+    <set-variable name="requiredScope" value="@(context.Request.Headers.GetValueOrDefault(&quot;x-required-scope&quot;, &quot;{{required-scope}}&quot;))" />
+    <choose>
+      <when condition="@{ var jwt = (Jwt)context.Variables[&quot;jwt&quot;]; var required = (string)context.Variables[&quot;requiredScope&quot;]; var scp = jwt.Claims.GetValueOrDefault(&quot;scp&quot;, &quot;&quot;); var roles = jwt.Claims.GetValueOrDefault(&quot;roles&quot;, &quot;&quot;); return !(scp.Split(' ').Contains(required) || roles.Split(',').Contains(required)); }">
+        <return-response>
+          <set-status code="403" reason="Forbidden" />
+          <set-header name="Content-Type" exists-action="override">
+            <value>application/json</value>
+          </set-header>
+          <set-body>@(&quot;{\&quot;error\&quot;:\&quot;insufficient_scope\&quot;,\&quot;required\&quot;:\&quot;&quot; + (string)context.Variables[&quot;requiredScope&quot;] + &quot;\&quot;}&quot;)</set-body>
+        </return-response>
+      </when>
+    </choose>
+
+    <!-- (3) RATE LIMIT per subscription key — protect tool backends + model spend. -->
+    <rate-limit-by-key calls="60" renewal-period="60" counter-key="@(context.Subscription?.Id ?? context.Request.IpAddress)" />
+    <quota-by-key calls="10000" renewal-period="86400" counter-key="@(context.Subscription?.Id ?? context.Request.IpAddress)" />
+
+    <!-- (4) FIELD-LEVEL PII REDACTION STUB. Synthetic data only in the PoC, but
+         the control must be PRESENT + demonstrable. Extend this list with the
+         fields Purview classifies as PII. Applied to the response body in
+         <outbound>; here we tag the call so logging excludes raw payloads. -->
+    <set-variable name="redactPii" value="true" />
+
+    <!-- (5) ROUTE to the Functions tool host. -->
+    <set-backend-service base-url="{{tools-backend-url}}" />
+
+    <!-- Propagate a correlation id (run_id) so APIM logs join Cosmos audit. -->
+    <set-header name="x-run-id" exists-action="skip">
+      <value>@(context.RequestId.ToString())</value>
+    </set-header>
+  </inbound>
+
+  <backend>
+    <base />
+  </backend>
+
+  <outbound>
+    <base />
+    <!-- (4 cont.) PII REDACTION on the response. find-and-replace stubs — swap in
+         regex-based redaction or a redact policy fragment per classified field.
+         TODO(copilot): generate these from the Purview classification results. -->
+    <choose>
+      <when condition="@((string)context.Variables.GetValueOrDefault(&quot;redactPii&quot;, &quot;false&quot;) == &quot;true&quot;)">
+        <!-- Example field-level masks (national id / phone / account no). -->
+        <find-and-replace from="&quot;national_id&quot;:" to="&quot;national_id&quot;:&quot;***REDACTED***&quot;,&quot;_national_id_masked&quot;:" />
+        <find-and-replace from="&quot;phone&quot;:" to="&quot;phone&quot;:&quot;***REDACTED***&quot;,&quot;_phone_masked&quot;:" />
+        <find-and-replace from="&quot;account_no&quot;:" to="&quot;account_no&quot;:&quot;***REDACTED***&quot;,&quot;_account_no_masked&quot;:" />
+      </when>
+    </choose>
+    <!-- Echo the correlation id back to the orchestrator for the audit trail. -->
+    <set-header name="x-run-id" exists-action="override">
+      <value>@(context.Request.Headers.GetValueOrDefault(&quot;x-run-id&quot;, context.RequestId.ToString()))</value>
+    </set-header>
+  </outbound>
+
+  <on-error>
+    <base />
+    <!-- Never leak backend internals on error. -->
+    <set-header name="x-error-source" exists-action="override">
+      <value>apim-tool-bridge</value>
+    </set-header>
+  </on-error>
+</policies>

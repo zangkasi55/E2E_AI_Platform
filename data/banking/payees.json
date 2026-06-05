@@ -1,0 +1,20 @@
+{
+  "_comment": "SYNTHETIC payee alias maps per user. Consumed by resolve_payee tool (user_id, payee_alias -> payee_id). Aliases are case-insensitive in the tool stub.",
+  "payees": {
+    "USR-001": [
+      {"alias": "mom", "payee_id": "PYE-9001", "name": "Malee Wattana", "bank": "SYNTHETIC Bank", "account_masked": "xxx-x-x4821-x"},
+      {"alias": "landlord", "payee_id": "PYE-9002", "name": "P. Chaiyo Property", "bank": "SYNTHETIC Bank", "account_masked": "xxx-x-x7733-x"}
+    ],
+    "USR-002": [
+      {"alias": "mom", "payee_id": "PYE-9010", "name": "Wanida Jaidee", "bank": "SYNTHETIC Bank", "account_masked": "xxx-x-x1102-x"}
+    ],
+    "USR-003": [
+      {"alias": "landlord", "payee_id": "PYE-9020", "name": "Baan Suan Rentals", "bank": "SYNTHETIC Bank", "account_masked": "xxx-x-x5567-x"},
+      {"alias": "mom", "payee_id": "PYE-9021", "name": "Sunan Srisuk", "bank": "SYNTHETIC Bank", "account_masked": "xxx-x-x8890-x"}
+    ],
+    "USR-004": [
+      {"alias": "mom", "payee_id": "PYE-9030", "name": "Pensri Phongsiri", "bank": "SYNTHETIC Bank", "account_masked": "xxx-x-x3344-x"},
+      {"alias": "vendor", "payee_id": "PYE-9031", "name": "Acme Supplies Co.", "bank": "SYNTHETIC Bank", "account_masked": "xxx-x-x2210-x"}
+    ]
+  }
+}

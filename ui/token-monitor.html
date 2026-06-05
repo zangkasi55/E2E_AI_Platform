@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Token Usage Monitor — Agentic AI Platform PoC</title>
+<style>
+  :root{
+    --agent:#0B5CAB; --agent2:#2E7DD1; --model:#5B2D8E; --tool:#0E7C7B;
+    --data:#2E7D32; --gov:#7A1FA2; --obs:#C25E00; --sec:#1A4E8A; --channel:#37474F;
+    --blocked:#B3261E; --ok:#2E7D32; --ink:#1A1A1A; --muted:#5F6B7A;
+    --bg:#F3F6FB; --card:#FFFFFF; --line:#E2E8F2;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.07);
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--agent);text-decoration:none}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+  .topbar{background:#0B2A4A;color:#fff;padding:12px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .topbar .crumb{font-size:13px;color:#BFD3EC}.topbar .crumb b{color:#fff}
+  .topbar .spacer{flex:1}
+  .topbar .tag{font-size:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);padding:5px 10px;border-radius:6px}
+  .hero{padding:20px 22px 4px}.hero h1{margin:0 0 4px;font-size:23px}.hero p{margin:0;color:var(--muted);font-size:14px}
+  .wrap{padding:16px 22px 44px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px}
+  .kpi .k{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .kpi .v{font-size:30px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+  .kpi .s{font-size:12px;color:var(--muted);margin-top:2px}
+  .kpi .bar{height:5px;border-radius:999px;margin-top:12px;background:#EEF2F8;overflow:hidden}
+  .kpi .bar span{display:block;height:100%}
+  .grid2{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;margin-bottom:16px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  .panel .ph{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .panel .ph h2{margin:0;font-size:14px;font-weight:700}.panel .ph .sub{font-size:12px;color:var(--muted);margin-left:auto}
+  .pad{padding:16px}
+  .legend{display:flex;flex-direction:column;gap:8px;font-size:13px}
+  .legend .li{display:flex;align-items:center;gap:9px}
+  .legend .sw{width:13px;height:13px;border-radius:4px;flex:none}
+  .legend .nm{font-weight:600}.legend .vv{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;background:#F8FAFD}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr:hover td{background:#F8FAFD}
+  .uc{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px}
+  .uc.cm{background:#EAF1FB;color:#0A4F93}.uc.bk{background:#E4F1F0;color:#0A5A59}
+  .barlabel{font-size:12px;fill:var(--ink);font-weight:600}
+  .barval{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}
+  .axis{stroke:#E2E8F2;stroke-width:1}
+  .note{font-size:12px;color:var(--muted);margin-top:12px}
+  @media (max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="crumb"><a href="index.html" style="color:#BFD3EC">Demo Hub</a> / <b>Token Usage Monitor</b></span>
+  <span class="spacer"></span>
+  <span class="tag">Cosmos <code style="color:#BFD3EC">tokens</code></span>
+  <span class="tag">App Insights <code style="color:#BFD3EC">gen_ai.token.usage</code></span>
+</div>
+
+<div class="hero">
+  <h1>Token usage &amp; cost monitor</h1>
+  <p>Aggregated over the canonical token records emitted by every model call
+    (<code>run_id, agent, step, model, prompt/completion/total_tokens, est_cost_usd, ts, use_case</code>).</p>
+</div>
+
+<div class="wrap">
+  <div class="kpis">
+    <div class="kpi"><div class="k">Total tokens</div><div class="v" id="kTotal">—</div>
+      <div class="s" id="kCalls">— model calls</div>
+      <div class="bar"><span id="kBarTotal" style="background:var(--agent)"></span></div></div>
+    <div class="kpi"><div class="k">Estimated cost</div><div class="v" id="kCost">—</div>
+      <div class="s">USD · illustrative price table</div>
+      <div class="bar"><span style="width:100%;background:var(--obs)"></span></div></div>
+    <div class="kpi"><div class="k">Prompt tokens</div><div class="v" id="kPrompt">—</div>
+      <div class="s" id="kPromptPct">— of total</div>
+      <div class="bar"><span id="kBarPrompt" style="background:var(--agent2)"></span></div></div>
+    <div class="kpi"><div class="k">Completion tokens</div><div class="v" id="kComp">—</div>
+      <div class="s" id="kCompPct">— of total</div>
+      <div class="bar"><span id="kBarComp" style="background:var(--model)"></span></div></div>
+  </div>
+
+  <div class="grid2">
+    <section class="panel">
+      <div class="ph"><h2>Tokens by agent / stage</h2><span class="sub">total tokens</span></div>
+      <div class="pad"><svg id="barChart" width="100%" viewBox="0 0 640 360" role="img" aria-label="Tokens by agent bar chart"></svg></div>
+    </section>
+    <section class="panel">
+      <div class="ph"><h2>Tokens by model</h2><span class="sub">share</span></div>
+      <div class="pad" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+        <svg id="donut" width="190" height="190" viewBox="0 0 190 190" role="img" aria-label="Tokens by model donut chart"></svg>
+        <div class="legend" id="modelLegend" style="flex:1;min-width:160px"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="ph"><h2>Per-run timeline</h2><span class="sub" id="runCount">— runs</span></div>
+    <div class="pad" style="padding:0">
+      <table>
+        <thead><tr>
+          <th>Run ID</th><th>Use case</th><th class="num">Model calls</th>
+          <th class="num">Prompt</th><th class="num">Completion</th><th class="num">Total tokens</th>
+          <th class="num">Est. cost</th><th>First call</th>
+        </tr></thead>
+        <tbody id="runRows"></tbody>
+      </table>
+      <div class="pad note">Records are illustrative synthetic runs. In production these stream from Cosmos
+        container <code>tokens</code> via the orchestrator route <code>GET /api/tokens</code>.</div>
+    </div>
+  </section>
+</div>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var A=window.AGPOC, recs=A.getTokens(), agg=A.aggregate(recs);
+  var fmt=function(n){return Number(n).toLocaleString();};
+
+  // ---- KPIs ----
+  document.getElementById("kTotal").textContent=fmt(agg.total.total);
+  document.getElementById("kCalls").textContent=recs.length+" model calls across "+Object.keys(agg.byRun).length+" runs";
+  document.getElementById("kCost").textContent="$"+agg.total.cost.toFixed(4);
+  document.getElementById("kPrompt").textContent=fmt(agg.total.prompt);
+  document.getElementById("kComp").textContent=fmt(agg.total.completion);
+  var pPct=Math.round(agg.total.prompt/agg.total.total*100), cPct=100-pPct;
+  document.getElementById("kPromptPct").textContent=pPct+"% of total";
+  document.getElementById("kCompPct").textContent=cPct+"% of total";
+  document.getElementById("kBarTotal").style.width="100%";
+  document.getElementById("kBarPrompt").style.width=pPct+"%";
+  document.getElementById("kBarComp").style.width=cPct+"%";
+
+  // ---- bar chart: tokens by agent ----
+  var agents=Object.keys(agg.byAgent).map(function(k){return {name:k,val:agg.byAgent[k]};})
+                 .sort(function(a,b){return b.val-a.val;});
+  var palette=[A.COLORS.agent,A.COLORS.agent2,A.COLORS.tool,A.COLORS.model,A.COLORS.gov,A.COLORS.obs,A.COLORS.data,A.COLORS.sec,A.COLORS.channel,"#4A6FA5","#8A6DB3","#0A8A6F"];
+  var svg=document.getElementById("barChart");
+  var W=640,H=360,padL=150,padR=70,padT=14,padB=20;
+  var maxV=Math.max.apply(null,agents.map(function(a){return a.val;}));
+  var rowH=(H-padT-padB)/agents.length, bh=Math.min(26,rowH*0.6);
+  var ns="http://www.w3.org/2000/svg";
+  function el(tag,attrs){var e=document.createElementNS(ns,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);return e;}
+  // gridlines
+  [0,0.25,0.5,0.75,1].forEach(function(g){
+    var x=padL+g*(W-padL-padR);
+    svg.appendChild(el("line",{x1:x,y1:padT,x2:x,y2:H-padB,class:"axis"}));
+    var t=el("text",{x:x,y:H-6,"text-anchor":"middle",class:"barval"});t.textContent=fmt(Math.round(maxV*g));svg.appendChild(t);
+  });
+  agents.forEach(function(a,i){
+    var y=padT+i*rowH+(rowH-bh)/2;
+    var w=(a.val/maxV)*(W-padL-padR);
+    var c=palette[i%palette.length];
+    var lbl=el("text",{x:padL-10,y:y+bh/2+4,"text-anchor":"end",class:"barlabel"});lbl.textContent=a.name;svg.appendChild(lbl);
+    var rect=el("rect",{x:padL,y:y,width:0,height:bh,rx:5,fill:c,opacity:0.92});svg.appendChild(rect);
+    var anim=el("animate",{attributeName:"width",from:0,to:w,dur:"0.7s",fill:"freeze",begin:(0.05*i)+"s"});rect.appendChild(anim);
+    var vt=el("text",{x:padL+w+8,y:y+bh/2+4,class:"barval"});vt.textContent=fmt(a.val);svg.appendChild(vt);
+  });
+
+  // ---- donut: tokens by model ----
+  var models=Object.keys(agg.byModel).map(function(k){return {name:k,val:agg.byModel[k]};})
+                 .sort(function(a,b){return b.val-a.val;});
+  var modelColors={"gpt-4o":A.COLORS.model,"gpt-4o-mini":"#9277B8"};
+  var dsvg=document.getElementById("donut"),cx=95,cy=95,r=66,sw=26,totalM=models.reduce(function(s,m){return s+m.val;},0);
+  var ang=-Math.PI/2;
+  function pt(a){return [cx+r*Math.cos(a),cy+r*Math.sin(a)];}
+  models.forEach(function(m){
+    var frac=m.val/totalM, a2=ang+frac*Math.PI*2;
+    var large=(a2-ang)>Math.PI?1:0, p1=pt(ang), p2=pt(a2);
+    var path=el("path",{d:"M "+p1[0]+" "+p1[1]+" A "+r+" "+r+" 0 "+large+" 1 "+p2[0]+" "+p2[1],
+      fill:"none",stroke:modelColors[m.name]||"#888","stroke-width":sw,"stroke-linecap":"butt"});
+    dsvg.appendChild(path);
+    ang=a2;
+  });
+  var ctr=el("text",{x:cx,y:cy-2,"text-anchor":"middle","font-size":"20","font-weight":"700",fill:A.COLORS.ink});
+  ctr.textContent=fmt(totalM);dsvg.appendChild(ctr);
+  var sub=el("text",{x:cx,y:cy+16,"text-anchor":"middle","font-size":"11",fill:A.COLORS.muted});
+  sub.textContent="tokens";dsvg.appendChild(sub);
+  var ml=document.getElementById("modelLegend");
+  models.forEach(function(m){
+    var pct=Math.round(m.val/totalM*100);
+    var d=document.createElement("div");d.className="li";
+    d.innerHTML='<span class="sw" style="background:'+(modelColors[m.name]||"#888")+'"></span>'+
+      '<span class="nm">'+m.name+'</span><span class="vv">'+fmt(m.val)+' · '+pct+'%</span>';
+    ml.appendChild(d);
+  });
+
+  // ---- per-run timeline table ----
+  var runs=Object.keys(agg.byRun).map(function(k){return agg.byRun[k];})
+              .sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});
+  document.getElementById("runCount").textContent=runs.length+" runs";
+  var tbody=document.getElementById("runRows");
+  runs.forEach(function(r){
+    var perRun=recs.filter(function(x){return x.run_id===r.run_id;});
+    var p=perRun.reduce(function(s,x){return s+x.prompt_tokens;},0);
+    var c=perRun.reduce(function(s,x){return s+x.completion_tokens;},0);
+    var ucClass=r.use_case==="credit_memo"?"cm":"bk", ucName=r.use_case==="credit_memo"?"credit_memo":"banking";
+    var tr=document.createElement("tr");
+    tr.innerHTML='<td><code>'+r.run_id+'</code></td>'+
+      '<td><span class="uc '+ucClass+'">'+ucName+'</span></td>'+
+      '<td class="num">'+r.calls+'</td>'+
+      '<td class="num">'+fmt(p)+'</td><td class="num">'+fmt(c)+'</td>'+
+      '<td class="num"><b>'+fmt(r.tokens)+'</b></td>'+
+      '<td class="num">$'+r.cost.toFixed(4)+'</td>'+
+      '<td>'+new Date(r.ts).toISOString().replace("T"," ").slice(0,16)+'Z</td>';
+    tbody.appendChild(tr);
+  });
+})();
+</script>
+</body>
+</html>

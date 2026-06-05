@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic AI Platform PoC — Demo Hub</title>
+<style>
+  :root{
+    --agent:#0B5CAB; --agent2:#2E7DD1; --model:#5B2D8E; --tool:#0E7C7B;
+    --data:#2E7D32; --gov:#7A1FA2; --obs:#C25E00; --sec:#1A4E8A; --channel:#37474F;
+    --blocked:#B3261E; --ok:#2E7D32; --ink:#1A1A1A; --muted:#5F6B7A;
+    --bg:#F3F6FB; --card:#FFFFFF; --line:#E2E8F2; --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.08);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:var(--bg); line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  header.top{
+    background:linear-gradient(135deg,#0B2A4A 0%,#0B5CAB 55%,#2E7DD1 100%);
+    color:#fff;padding:54px 0 64px;position:relative;overflow:hidden;
+  }
+  header.top::after{content:"";position:absolute;inset:0;
+    background:radial-gradient(1200px 280px at 80% -40%,rgba(255,255,255,.18),transparent 60%);}
+  .eyebrow{display:inline-flex;gap:8px;align-items:center;font-size:12px;letter-spacing:.12em;
+    text-transform:uppercase;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
+    padding:6px 12px;border-radius:999px;font-weight:600}
+  h1{font-size:38px;line-height:1.12;margin:18px 0 10px;font-weight:700;max-width:780px}
+  .lede{font-size:17px;max-width:680px;color:rgba(255,255,255,.92)}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+  .chip{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.26);border-radius:8px;
+    padding:7px 12px;font-size:13px;font-weight:500}
+  main{padding:40px 0 64px;margin-top:-32px;position:relative;z-index:2}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;
+    box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:248px;
+    text-decoration:none;color:inherit;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;
+  }
+  .card:hover{transform:translateY(-3px);box-shadow:0 4px 10px rgba(16,24,40,.10),0 18px 40px rgba(16,24,40,.14);
+    border-color:#C9D6EC}
+  .card .tag{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .icon{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    margin-bottom:14px;color:#fff;font-size:22px;font-weight:700}
+  .card h2{font-size:20px;margin:4px 0 8px}
+  .card p{margin:0;color:var(--muted);font-size:14px;flex:1}
+  .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .pill{font-size:11.5px;font-weight:600;padding:4px 8px;border-radius:6px;border:1px solid var(--line);
+    color:var(--muted);background:#F8FAFD}
+  .go{margin-top:16px;font-weight:600;color:var(--agent);display:inline-flex;align-items:center;gap:6px;font-size:14px}
+  .section-h{margin:40px 0 14px;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .legend{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow)}
+  .legend h3{margin:0 0 14px;font-size:16px}
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .sw{display:flex;align-items:center;gap:9px;font-size:13px}
+  .dot{width:16px;height:16px;border-radius:5px;flex:none;border:1px solid rgba(0,0,0,.08)}
+  footer{padding:28px 0 48px;color:var(--muted);font-size:13px}
+  .note{margin-top:8px}
+  a.inline{color:var(--agent);font-weight:600;text-decoration:none}
+  @media (max-width:860px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:Product_x0020_category msdt:dt="string">Agentic AI Platform PoC</mso:Product_x0020_category>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <span class="eyebrow">DataX / TechX × Microsoft · SCBX Group</span>
+    <h1>Agentic AI Platform PoC</h1>
+    <p class="lede">An interactive prototype of the multi-agent platform on Microsoft Azure — built to show
+      <strong>which agent is working at every moment</strong>, how tools are called through a governed control plane,
+      and how every model call is metered for token usage.</p>
+    <div class="meta">
+      <span class="chip">Azure AI Foundry</span>
+      <span class="chip">API Management control plane</span>
+      <span class="chip">Durable Functions HITL</span>
+      <span class="chip">Region: southeastasia</span>
+      <span class="chip">Synthetic data only</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="grid">
+    <a class="card" href="credit-memo.html">
+      <div class="icon" style="background:var(--agent)">UC1</div>
+      <span class="tag" style="color:var(--agent)">Use Case 1 · Read-only · HITL</span>
+      <h2>Credit Memo Drafting Agent</h2>
+      <p>Watch <code>memo_orchestrator</code> delegate to four sub-agents, call tools through APIM, pause for a human
+        reviewer, and finalize an audited memo. <strong>Agent drafts, human decides.</strong></p>
+      <div class="pill-row">
+        <span class="pill">doc_retrieval</span><span class="pill">financial_ratio</span>
+        <span class="pill">bureau_summary</span><span class="pill">memo_assembler</span>
+      </div>
+      <span class="go">Open demo →</span>
+    </a>
+
+    <a class="card" href="banking.html">
+      <div class="icon" style="background:var(--tool)">UC2</div>
+      <span class="tag" style="color:var(--tool)">Use Case 2 · Deterministic control</span>
+      <h2>Conversational Banking Control</h2>
+      <p>A chat request splits into a <strong>probabilistic</strong> reasoning zone and a <strong>deterministic</strong>
+        control zone. Tools flow through the policy boundary to an auditable handoff. <strong>No money moves.</strong></p>
+      <div class="pill-row">
+        <span class="pill">get_balance</span><span class="pill">resolve_payee</span>
+        <span class="pill">check_transfer_eligibility</span><span class="pill">handoff</span>
+      </div>
+      <span class="go">Open demo →</span>
+    </a>
+
+    <a class="card" href="token-monitor.html">
+      <div class="icon" style="background:var(--obs)">$</div>
+      <span class="tag" style="color:var(--obs)">Observability · Runtime</span>
+      <h2>Token Usage Monitor</h2>
+      <p>A dashboard over the canonical token records: total tokens, estimated cost, tokens by agent and by model,
+        and a per-run timeline — the same contract emitted to Cosmos and App Insights.</p>
+      <div class="pill-row">
+        <span class="pill">total tokens</span><span class="pill">est. cost USD</span>
+        <span class="pill">by agent</span><span class="pill">by model</span>
+      </div>
+      <span class="go">Open dashboard →</span>
+    </a>
+  </div>
+
+  <div class="grid" style="margin-top:20px">
+    <a class="card" href="test-expectations.html">
+      <div class="icon" style="background:var(--ok)">✓</div>
+      <span class="tag" style="color:var(--ok)">Conformance</span>
+      <h2>Test Expectations Dashboard</h2>
+      <p>The live fit-gap view: every <strong>Minimum Expected Implementation</strong> item and assessment criterion
+        from the June 19 calibration, mapped to where it runs and tagged <strong>Demonstrated / Mocked / Documented</strong>.</p>
+      <div class="pill-row">
+        <span class="pill">8/8 minimum items</span><span class="pill">10 criteria</span>
+        <span class="pill">no money movement</span><span class="pill">component split</span>
+      </div>
+      <span class="go">Open dashboard →</span>
+    </a>
+
+    <a class="card" href="purview-observability.html">
+      <div class="icon" style="background:var(--gov)">P</div>
+      <span class="tag" style="color:var(--gov)">Observability · Governance</span>
+      <h2>Purview Observability</h2>
+      <p>The design-time governance plane: a <strong>data-lineage graph</strong>, classification coverage that drives
+        the APIM PII filter, the governance→runtime link, and Data Estate Insights tiles. <strong>Where did this fact come from?</strong></p>
+      <div class="pill-row">
+        <span class="pill">lineage</span><span class="pill">classification</span>
+        <span class="pill">gov → runtime</span><span class="pill">estate insights</span>
+      </div>
+      <span class="go">Open view →</span>
+    </a>
+
+    <div class="card" style="cursor:default;background:#F8FAFD">
+      <div class="icon" style="background:var(--channel)">↔</div>
+      <span class="tag" style="color:var(--channel)">Two observability planes</span>
+      <h2>How the views fit together</h2>
+      <p><strong>Purview</strong> answers "is the data governed and where did it come from?" · <strong>Token Monitor</strong>
+        answers "what did the agents do and what did it cost?" Together they give a regulated reviewer both halves.</p>
+      <div class="pill-row">
+        <span class="pill">design-time = Purview</span><span class="pill">runtime = App Insights</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-h">Color language (shared with the architecture diagrams)</div>
+  <div class="legend">
+    <h3>Every page reuses one palette so the demo reads like the reference architecture</h3>
+    <div class="swatches">
+      <div class="sw"><span class="dot" style="background:#0B5CAB"></span>agent (parent)</div>
+      <div class="sw"><span class="dot" style="background:#2E7DD1"></span>agent2 (sub-agent)</div>
+      <div class="sw"><span class="dot" style="background:#5B2D8E"></span>model</div>
+      <div class="sw"><span class="dot" style="background:#0E7C7B"></span>tool</div>
+      <div class="sw"><span class="dot" style="background:#2E7D32"></span>data / ok</div>
+      <div class="sw"><span class="dot" style="background:#7A1FA2"></span>governance</div>
+      <div class="sw"><span class="dot" style="background:#C25E00"></span>observability</div>
+      <div class="sw"><span class="dot" style="background:#B3261E"></span>blocked / boundary</div>
+    </div>
+  </div>
+</main>
+
+<footer class="wrap">
+  <div>Prototype build — plain HTML/CSS/vanilla JS, runs from <code>file://</code> with no network or build step.</div>
+  <div class="note">Continue development in React 18 + TypeScript per <a class="inline" href="DESIGN.md">DESIGN.md</a>.
+    All names, tools, colors and the token contract follow <code>working/POC_SPEC.md</code>.</div>
+</footer>
+
+<script src="mock-data.js"></script>
+<script>
+  // Smoke check that the shared simulated backend loaded for file:// usage.
+  document.addEventListener("DOMContentLoaded", function () {
+    if (!window.AGPOC) { console.warn("mock-data.js failed to load"); }
+  });
+</script>
+</body>
+</html>

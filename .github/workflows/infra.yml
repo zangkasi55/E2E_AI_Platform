@@ -1,0 +1,93 @@
+# =============================================================================
+# infra.yml — Deploy Azure infrastructure (Bicep) via OIDC.
+# Builds + what-ifs + deploys main.bicep to the subscription (creates
+# rg-agentic-poc-sea). Triggered on infra changes or manually.
+#
+# AUTH: federated OIDC (no secrets). Requires repo/environment variables:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+# See .github/workflows/README.md for the federated credential setup.
+# =============================================================================
+name: infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write   # required for OIDC azure/login
+  contents: read
+
+env:
+  AZURE_LOCATION: southeastasia
+  TEMPLATE: infra/main.bicep
+  PARAMS: infra/main.bicepparam
+
+jobs:
+  validate:
+    name: Build + What-If
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep build (lint + compile)
+        run: az bicep build --file ${{ env.TEMPLATE }}
+
+      - name: What-If (subscription scope)
+        run: |
+          az deployment sub what-if \
+            --location ${{ env.AZURE_LOCATION }} \
+            --template-file ${{ env.TEMPLATE }} \
+            --parameters ${{ env.PARAMS }}
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: validate
+    # Only deploy on push to main / manual run — never on PRs.
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy main.bicep (subscription scope)
+        id: deploy
+        run: |
+          az deployment sub create \
+            --name agpoc-infra-${{ github.run_number }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --template-file ${{ env.TEMPLATE }} \
+            --parameters ${{ env.PARAMS }}
+
+      - name: Export key outputs to the job summary
+        run: |
+          az deployment sub show \
+            --name agpoc-infra-${{ github.run_number }} \
+            --query properties.outputs \
+            -o json > outputs.json
+          echo '### Infra outputs' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat outputs.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

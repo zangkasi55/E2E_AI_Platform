@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Purview Observability — Agentic AI Platform PoC</title>
+<style>
+  :root{
+    --agent:#0B5CAB; --agent2:#2E7DD1; --model:#5B2D8E; --tool:#0E7C7B;
+    --data:#2E7D32; --gov:#7A1FA2; --obs:#C25E00; --sec:#1A4E8A; --channel:#37474F;
+    --blocked:#B3261E; --ok:#2E7D32; --ink:#1A1A1A; --muted:#5F6B7A;
+    --bg:#F3F6FB; --card:#FFFFFF; --line:#E2E8F2;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.07);
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--agent);text-decoration:none}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+  .topbar{background:#0B2A4A;color:#fff;padding:12px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .topbar .crumb{font-size:13px;color:#BFD3EC}.topbar .crumb b{color:#fff}
+  .topbar .spacer{flex:1}
+  .topbar .tag{font-size:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);padding:5px 10px;border-radius:6px}
+  .hero{padding:20px 22px 4px}.hero h1{margin:0 0 4px;font-size:23px}.hero p{margin:0;color:var(--muted);font-size:14px;max-width:900px}
+  .wrap{padding:16px 22px 44px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px}
+  .kpi .k{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .kpi .v{font-size:30px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+  .kpi .s{font-size:12px;color:var(--muted);margin-top:2px}
+  .kpi .bar{height:5px;border-radius:999px;margin-top:12px;background:#EEF2F8;overflow:hidden}
+  .kpi .bar span{display:block;height:100%}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin-bottom:16px}
+  .panel .ph{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .panel .ph .n{width:22px;height:22px;border-radius:6px;background:var(--gov);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .panel .ph h2{margin:0;font-size:14px;font-weight:700}.panel .ph .sub{font-size:12px;color:var(--muted);margin-left:auto}
+  .pad{padding:16px}
+  /* lineage strip */
+  .lineage{display:flex;align-items:stretch;gap:0;flex-wrap:nowrap;overflow-x:auto;padding:18px 16px}
+  .lnode{flex:1 0 150px;min-width:150px;border:1px solid var(--line);border-top:4px solid var(--gov);border-radius:10px;
+    padding:12px;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease;background:#fff;position:relative}
+  .lnode:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+  .lnode.sel{box-shadow:0 0 0 2px var(--gov)}
+  .lnode .kind{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .lnode .lbl{font-size:14px;font-weight:700;margin-top:4px}
+  .lnode .sb{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .arrow{flex:0 0 26px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px}
+  .factbar{font-size:13px;color:var(--ink);padding:0 16px 4px}
+  .factbar b{color:var(--gov)}
+  .detail{margin:0 16px 16px;border:1px dashed var(--line);border-radius:10px;padding:13px 15px;background:#FBFCFE;font-size:13px;min-height:54px}
+  .detail .dt{font-weight:700;margin-bottom:3px}
+  /* classification table */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;background:#F8FAFD}
+  tr:hover td{background:#F8FAFD}
+  .pii{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:999px}
+  .pii .d{width:8px;height:8px;border-radius:50%}
+  .tag-s{font-size:11px;font-weight:600;color:var(--muted)}
+  .arrow-i{color:var(--muted);font-weight:700}
+  /* governance->runtime diagram */
+  .gr{display:flex;align-items:center;gap:0;flex-wrap:wrap;padding:20px 16px;justify-content:center}
+  .grbox{border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:180px;text-align:center;background:#fff}
+  .grbox .t{font-size:13px;font-weight:700}.grbox .s{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .grbox.gov{border-top:4px solid var(--gov)}.grbox.bound{border-top:4px solid var(--blocked)}.grbox.run{border-top:4px solid var(--obs)}
+  .grarrow{flex:0 0 64px;text-align:center;color:var(--muted);font-size:12px}
+  .grarrow .a{font-size:22px;line-height:1}
+  .grid2{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
+  .planes{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px}
+  .plane{border:1px solid var(--line);border-radius:12px;padding:15px}
+  .plane.design{border-left:4px solid var(--gov)}.plane.runtime{border-left:4px solid var(--obs)}
+  .plane h3{margin:0 0 6px;font-size:14px}
+  .plane p{margin:0;font-size:12.5px;color:var(--muted)}
+  .plane .lnk{margin-top:9px;font-size:12.5px;font-weight:600}
+  .note{font-size:12px;color:var(--muted);padding:0 16px 14px}
+  /* live platform wiring status */
+  .live-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .wires{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .wire{border:1px solid var(--line);border-radius:10px;padding:12px 13px;background:#fff;display:flex;align-items:flex-start;gap:10px}
+  .wire.ok{border-left:4px solid var(--ok)} .wire.off{border-left:4px solid var(--blocked)}
+  .wire .wd{width:10px;height:10px;border-radius:50%;margin-top:4px;flex:0 0 10px}
+  .wire .wt{font-size:13px;font-weight:700}
+  .wire .ws{font-size:11.5px;color:var(--muted);margin-top:3px;word-break:break-all}
+  .wnote{font-size:12.5px;color:var(--muted)}
+  @media (max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.planes{grid-template-columns:1fr}}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:Product_x0020_category msdt:dt="string">Not found</mso:Product_x0020_category>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<div class="topbar">
+  <span class="crumb"><a href="index.html" style="color:#BFD3EC">Demo Hub</a> / <b>Purview Observability</b></span>
+  <span class="spacer"></span>
+  <span class="tag">Plane: <code style="color:#BFD3EC">design-time governance</code></span>
+  <span class="tag">Region: <code style="color:#BFD3EC">southeastasia</code></span>
+</div>
+
+<div class="hero">
+  <h1>Microsoft Purview — governance observability</h1>
+  <p>The <strong>design-time / data-governance</strong> observability plane. It answers <em>"is this source approved,
+    what PII does it carry, and where did this number in the memo come from?"</em> — the complement to the
+    <strong>runtime / execution</strong> plane in the
+    <a href="token-monitor.html">token monitor</a>. The PoC reproduces the information shape of four real Purview
+    surfaces (Data Map lineage, Classification insights, Scan results, Data Estate Insights) so the capability reads
+    faithfully from <code>file://</code> with no Azure.</p>
+</div>
+
+<div class="wrap">
+  <div class="kpis">
+    <div class="kpi"><div class="k">Sources registered</div><div class="v" id="kSrc">—</div>
+      <div class="s">storage · index · mock APIs</div>
+      <div class="bar"><span style="width:100%;background:var(--gov)"></span></div></div>
+    <div class="kpi"><div class="k">Fields classified</div><div class="v" id="kFields">—</div>
+      <div class="s" id="kFieldsS">— of fields scanned</div>
+      <div class="bar"><span id="kFieldsBar" style="background:var(--data)"></span></div></div>
+    <div class="kpi"><div class="k">Sensitive fields</div><div class="v" id="kSens">—</div>
+      <div class="s">drive redact / mask at APIM</div>
+      <div class="bar"><span style="width:100%;background:var(--blocked)"></span></div></div>
+    <div class="kpi"><div class="k">Approved sources</div><div class="v" id="kAppr">—</div>
+      <div class="s">only path the agents can query</div>
+      <div class="bar"><span style="width:100%;background:var(--ok)"></span></div></div>
+  </div>
+
+  <!-- Panel 0 — live platform wiring status (auto-refresh) -->
+  <section class="panel" id="wirePanel">
+    <div class="ph"><span class="n">●</span><h2>Platform wiring status</h2>
+      <span class="sub" id="wireSub"><span class="live-dot" style="background:#C25E00"></span>connecting to orchestrator…</span></div>
+    <div class="pad">
+      <div class="wires" id="wires"><div class="wnote">Contacting orchestrator <code>/api/governance/policies</code>…</div></div>
+    </div>
+  </section>
+
+  <!-- Panel DSPM — risky-prompt monitoring (DSPM for AI) -->
+  <section class="panel" id="dspmPanel">
+    <div class="ph"><span class="n">●</span><h2>DSPM for AI — risky prompt &amp; data-security monitoring</h2>
+      <span class="sub" id="dspmSub"><span class="live-dot" style="background:#C25E00"></span>loading activity…</span></div>
+    <div class="pad">
+      <div class="note" style="padding:0 0 12px">Microsoft Purview <strong>DSPM for AI</strong> monitors the prompts and
+        responses flowing through the agents. Prompt-injection / policy-override attempts (e.g. "skip the OTP",
+        "ignore bank rules") and document sensitivity-label blocks are captured here as <em>risky AI usage</em> events —
+        the same records that appear in the Purview DSPM for AI activity explorer and Defender for Cloud AI alerts.</div>
+      <table>
+        <thead><tr><th>Time</th><th>Event</th><th>Risk / classification</th><th>Captured interaction</th><th>Decision</th></tr></thead>
+        <tbody id="dspmRows"><tr><td colspan="5" class="wnote" style="padding:14px">Contacting orchestrator
+          <code>/api/governance/dspm-events</code>…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Panel 1 — lineage graph -->
+  <section class="panel">
+    <div class="ph"><span class="n">1</span><h2>Data lineage — where did this fact come from?</h2>
+      <span class="sub">Data Map provenance</span></div>
+    <div class="factbar">Tracing: <b id="factLbl">—</b> · click any node</div>
+    <div class="lineage" id="lineage"></div>
+    <div class="detail" id="lnDetail"><div class="dt">Select a node</div>
+      <div>Click a stage in the provenance strip to see what Purview records at that point.</div></div>
+  </section>
+
+  <div class="grid2">
+    <!-- Panel 2 — classification coverage -->
+    <section class="panel">
+      <div class="ph"><span class="n">2</span><h2>Classification coverage</h2>
+        <span class="sub">field → classification → PII action</span></div>
+      <table>
+        <thead><tr><th>Field</th><th>Purview classification</th><th>Sensitivity</th><th>APIM action</th></tr></thead>
+        <tbody id="clsRows"></tbody>
+      </table>
+      <div class="note">Classification on the left literally selects the runtime PII filter on the right — the
+        governance→runtime link, made visible.</div>
+    </section>
+
+    <!-- Panel 3 — governance->runtime link -->
+    <section class="panel">
+      <div class="ph"><span class="n">3</span><h2>Governance → runtime link</h2>
+        <span class="sub">classifications drive the boundary</span></div>
+      <div class="gr">
+        <div class="grbox gov"><div class="t">Purview classifications</div><div class="s">scan results · sensitivity labels</div></div>
+        <div class="grarrow"><div class="a">→</div><div>export / sync</div></div>
+        <div class="grbox bound"><div class="t">APIM <code>inbound-tool-call</code></div><div class="s">PII-filter step (mask / redact)</div></div>
+        <div class="grarrow"><div class="a">→</div><div>enforced on</div></div>
+        <div class="grbox run"><div class="t">Tool call result</div><div class="s">PII removed before the agent sees it</div></div>
+      </div>
+      <div class="note">The boundary's redaction is <strong>driven by governance</strong>, not hardcoded. In production
+        this export is a small sync job (flagged custom-built in the design note).</div>
+    </section>
+  </div>
+
+  <!-- Panel 4 — two planes -->
+  <section class="panel">
+    <div class="ph"><span class="n">4</span><h2>Two complementary observability planes</h2>
+      <span class="sub">Data Estate Insights complement</span></div>
+    <div class="planes">
+      <div class="plane design">
+        <h3>Design-time · data governance = Purview</h3>
+        <p>Provenance, classification coverage, approved-source proof. Answers "is the data governed and where did it
+          come from?"</p>
+        <div class="lnk"><a href="purview-observability.html">This view →</a></div>
+      </div>
+      <div class="plane runtime">
+        <h3>Runtime · execution = App Insights + Cosmos</h3>
+        <p>Per-step audit, token &amp; cost metric, handoff trace. Answers "what did the agents do and what did it cost?"</p>
+        <div class="lnk"><a href="token-monitor.html">Token monitor →</a></div>
+      </div>
+    </div>
+    <div class="note">Together they cover both the data-governance and execution questions a regulated reviewer asks.</div>
+  </section>
+</div>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var A=window.AGPOC, P=A.getPurview();
+
+  // ---- KPIs ----
+  var ins=P.insights;
+  document.getElementById("kSrc").textContent=ins.sourcesRegistered;
+  document.getElementById("kFields").textContent=ins.fieldsClassifiedPct+"%";
+  document.getElementById("kFieldsS").textContent=ins.classifiedFields+" of "+ins.totalFields+" fields scanned";
+  document.getElementById("kFieldsBar").style.width=ins.fieldsClassifiedPct+"%";
+  document.getElementById("kSens").textContent=ins.sensitiveFields;
+  document.getElementById("kAppr").textContent=ins.approvedSources;
+
+  // ---- Panel 1: lineage ----
+  document.getElementById("factLbl").textContent=P.lineage.fact;
+  var lin=document.getElementById("lineage"), det=document.getElementById("lnDetail");
+  P.lineage.nodes.forEach(function(n,i){
+    var node=document.createElement("div");node.className="lnode";
+    node.style.borderTopColor=n.color;
+    node.innerHTML='<div class="kind">'+n.kind+'</div><div class="lbl">'+n.label+'</div>'+
+      '<div class="sb">'+n.sub+'</div>';
+    node.addEventListener("click",function(){
+      Array.prototype.forEach.call(lin.querySelectorAll(".lnode"),function(e){e.classList.remove("sel");});
+      node.classList.add("sel");
+      det.innerHTML='<div class="dt" style="color:'+n.color+'">'+n.label+'</div><div>'+n.detail+'</div>';
+    });
+    lin.appendChild(node);
+    if(i<P.lineage.nodes.length-1){
+      var a=document.createElement("div");a.className="arrow";a.textContent="→";lin.appendChild(a);
+    }
+  });
+
+  // ---- Panel 2: classification table ----
+  var cr=document.getElementById("clsRows");
+  P.classifications.forEach(function(c){
+    var act=P.piiAction[c.action];
+    var tr=document.createElement("tr");
+    tr.innerHTML='<td><code>'+c.field+'</code></td>'+
+      '<td>'+c.classification+'<div class="tag-s">'+c.source+'</div></td>'+
+      '<td>'+c.sensitivity+'</td>'+
+      '<td><span class="pii" style="color:'+act.color+';background:'+act.bg+'">'+
+      '<span class="d" style="background:'+act.color+'"></span>'+act.label+'</span></td>';
+    cr.appendChild(tr);
+  });
+
+  // ---- Panel 0: live platform wiring status (auto-refresh every 15s) ----
+  // Backend base URL: override with ?api=http://host:port . Defaults to the
+  // local orchestrator. The page degrades gracefully when it is unreachable.
+  var BACKEND=(new URLSearchParams(location.search).get("api")||"http://localhost:8000").replace(/\/+$/,"");
+  var REFRESH_MS=15000;
+  var wiresEl=document.getElementById("wires"), wireSub=document.getElementById("wireSub");
+
+  function renderWiring(payload){
+    var items=(payload.component_wiring||[]).slice();
+    if(payload.guardrail_policy){
+      var g=payload.guardrail_policy;
+      items.push({component:"Foundry Guardrail",configured:!!g.configured,
+        details:{policy:g.policy_name||g.policy_id||"—",mode:g.mode}});
+    }
+    wiresEl.innerHTML="";
+    items.forEach(function(c){
+      var col=c.configured?"#2E7D32":"#B3261E", lbl=c.configured?"configured":"not configured";
+      var d=c.details||{};
+      var sub=Object.keys(d).filter(function(k){return d[k]!=null&&d[k]!==""&&d[k]!==false;})
+        .map(function(k){return k+": "+d[k];}).join(" · ")||"—";
+      var el=document.createElement("div"); el.className="wire "+(c.configured?"ok":"off");
+      el.innerHTML='<span class="wd" style="background:'+col+'"></span>'+
+        '<div><div class="wt">'+c.component+
+        ' <span style="color:'+col+';font-size:11px;font-weight:700">· '+lbl+'</span></div>'+
+        '<div class="ws">'+sub+'</div></div>';
+      wiresEl.appendChild(el);
+    });
+    var n=items.filter(function(c){return c.configured;}).length;
+    wireSub.innerHTML='<span class="live-dot" style="background:#2E7D32"></span>'+
+      n+' / '+items.length+' configured · updated '+new Date().toLocaleTimeString();
+  }
+
+  function refreshWiring(){
+    fetch(BACKEND+"/api/governance/policies",{cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+      .then(renderWiring)
+      .catch(function(){
+        wireSub.innerHTML='<span class="live-dot" style="background:#B3261E"></span>'+
+          'orchestrator offline ('+BACKEND+') · retrying';
+        if(wiresEl.querySelector(".wnote")){
+          wiresEl.innerHTML='<div class="wnote">Backend not reachable. Start it with '+
+            '<code>uvicorn app.main:app --port 8000</code> — this view auto-retries every 15s. '+
+            'Point at another host with <code>?api=https://host</code>.</div>';
+        }
+      });
+  }
+  refreshWiring();
+  setInterval(refreshWiring, REFRESH_MS);
+
+  // ---- DSPM for AI: risky-prompt + data-security activity (auto-refresh) ----
+  var dspmRows=document.getElementById("dspmRows"), dspmSub=document.getElementById("dspmSub");
+
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+
+  function dspmEventMeta(e){
+    switch(e.event_type){
+      case "prompt_injection_block": return {label:"Risky prompt",  color:"#B3261E", bg:"#FDECEA"};
+      case "dlp_block":              return {label:"DLP block",      color:"#B3261E", bg:"#FDECEA"};
+      case "sensitivity_label_scan": return {label:"Label scan",     color:"#2E7D32", bg:"#E9F5EC"};
+      default:                       return {label:e.event_type||"event", color:"#5F6B7A", bg:"#EEF2F8"};
+    }
+  }
+
+  function renderDspm(events){
+    if(!events.length){
+      dspmRows.innerHTML='<tr><td colspan="5" class="wnote" style="padding:14px">No DSPM for AI events yet.</td></tr>';
+      dspmSub.innerHTML='<span class="live-dot" style="background:#2E7D32"></span>0 events';
+      return;
+    }
+    dspmRows.innerHTML="";
+    events.forEach(function(e){
+      var m=dspmEventMeta(e);
+      var blocked=e.decision==="blocked";
+      var decCol=blocked?"#B3261E":"#2E7D32", decBg=blocked?"#FDECEA":"#E9F5EC";
+      var when=(e.ts||"").replace("T"," ").replace(/(\+00:00|Z)$/,"").slice(0,19);
+      var risk=esc(e.risk_category||e.label_full_name||e.label||"—");
+      var capture=e.event_type==="prompt_injection_block"
+        ? '<code>'+esc(e.prompt_preview||"")+'</code>'
+        : esc(e.file_name||e.detail||"—");
+      var who=e.user?'<div class="tag-s">'+esc(e.user)+' · '+esc(e.use_case||"")+'</div>':"";
+      var tr=document.createElement("tr");
+      tr.innerHTML=
+        '<td style="white-space:nowrap">'+esc(when)+'</td>'+
+        '<td><span class="pii" style="color:'+m.color+';background:'+m.bg+'">'+
+          '<span class="d" style="background:'+m.color+'"></span>'+esc(m.label)+'</span></td>'+
+        '<td>'+risk+'<div class="tag-s">'+esc(e.guardrail_rule||e.source||"")+'</div></td>'+
+        '<td>'+capture+who+'</td>'+
+        '<td><span class="pii" style="color:'+decCol+';background:'+decBg+'">'+
+          '<span class="d" style="background:'+decCol+'"></span>'+esc(e.decision||"")+'</span></td>';
+      dspmRows.appendChild(tr);
+    });
+    var risky=events.filter(function(e){return e.decision==="blocked";}).length;
+    dspmSub.innerHTML='<span class="live-dot" style="background:'+(risky?"#B3261E":"#2E7D32")+'"></span>'+
+      events.length+' events · '+risky+' blocked · updated '+new Date().toLocaleTimeString();
+  }
+
+  function refreshDspm(){
+    fetch(BACKEND+"/api/governance/dspm-events?limit=25",{cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+      .then(renderDspm)
+      .catch(function(){
+        dspmSub.innerHTML='<span class="live-dot" style="background:#B3261E"></span>orchestrator offline · retrying';
+        if(dspmRows.querySelector(".wnote")){
+          dspmRows.innerHTML='<tr><td colspan="5" class="wnote" style="padding:14px">Backend not reachable. '+
+            'Start it with <code>uvicorn app.main:app --port 8000</code>, then trigger a risky prompt from the '+
+            '<a href="banking.html">banking demo</a> — it appears here automatically.</td></tr>';
+        }
+      });
+  }
+  refreshDspm();
+  setInterval(refreshDspm, REFRESH_MS);
+})();
+</script>
+</body>
+</html>

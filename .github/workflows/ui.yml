@@ -1,0 +1,68 @@
+# =============================================================================
+# ui.yml — Build the React 18 + TypeScript + Vite UI and deploy to Azure Static
+# Web Apps.
+#
+# AUTH: Static Web Apps deployment token (AZURE_STATIC_WEB_APPS_API_TOKEN secret)
+# for the SWA deploy step; OIDC for any az CLI config steps. The UI calls the
+# orchestrator's Container App FQDN (set VITE_API_BASE_URL as a repo variable).
+# =============================================================================
+name: ui
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ui/**'
+      - '.github/workflows/ui.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ui/**'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+  UI_DIR: ui
+
+jobs:
+  build-and-deploy:
+    name: Build + deploy UI
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.UI_DIR }}/package-lock.json
+
+      - name: Install + build (Vite)
+        working-directory: ${{ env.UI_DIR }}
+        env:
+          # Orchestrator Container App URL (from infra outputs.orchestratorFqdn).
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: ${{ env.UI_DIR }}
+          output_location: dist          # Vite build output
+          skip_app_build: true           # we already ran npm run build above
+
+# ALTERNATIVE (Container Apps host): if the UI ships as a container instead of
+# SWA, swap the deploy step for an `az containerapp update` against an
+# agpoc-aca-ui-dev app (reuse the ACA environment from containerapps.bicep) and
+# bind the ui UAMI (agpoc-id-ui-dev). TODO(copilot): pick one host + delete the
+# other path.

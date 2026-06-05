@@ -1,0 +1,15 @@
+# azure.yaml — azd configuration for the Agentic AI Platform PoC UI.
+# Deploys the Vite/React SPA (frontend/) to Azure Static Web Apps.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: agpoc-ui
+metadata:
+  template: agpoc-ui@1.0.0
+infra:
+  path: infra/swa
+  module: main
+services:
+  web:
+    project: ./frontend
+    language: js
+    host: staticwebapp
+    dist: dist

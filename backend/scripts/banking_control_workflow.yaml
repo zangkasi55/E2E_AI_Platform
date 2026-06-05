@@ -1,0 +1,21 @@
+#
+# SCBX UC2 - Conversational Banking Control
+# Single-agent conversational orchestration. The banking-controller decomposes a
+# banking request into intents and slots; it never moves money - the only
+# terminal action is a transaction handoff that requires downstream approval.
+#
+# This is a Microsoft Agent Framework declarative workflow (CSDL YAML). It is
+# registered as a Foundry workflow agent (definition.kind = "workflow") via
+# provision_foundry_agents.py and surfaces in the portal Workflows (Preview) tab.
+#
+kind: Workflow
+trigger:
+  kind: OnConversationStart
+  id: banking_control_workflow
+  actions:
+    - kind: InvokeAzureAgent
+      id: control_request
+      displayName: Decompose and control banking request
+      conversationId: =System.ConversationId
+      agent:
+        name: banking-controller

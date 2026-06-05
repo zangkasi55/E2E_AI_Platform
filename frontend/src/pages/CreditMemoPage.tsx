@@ -1,0 +1,293 @@
+// =============================================================================
+// pages/CreditMemoPage.tsx (UC1) — owns useRunPlayer("credit_memo"). Left column:
+// run controls + live AgentFlowGraph + current ToolCallCard + HITL approval bar.
+// Right rail: audit trail + live token counter. Read-only workflow; the memo is
+// never final without human approval (POC_SPEC §UC1 hard rule).
+// =============================================================================
+import { useEffect, useState, type ChangeEvent, type DragEvent } from "react";
+import type { RunDef } from "../types";
+import { backend } from "../lib";
+import { UC1_AGENTS } from "../data/mockData";
+import {
+  SAMPLE_DR_DOCUMENT,
+  SAMPLE_DR_FILE_NAME,
+  SAMPLE_HC_DOCUMENT,
+  SAMPLE_HC_FILE_NAME,
+} from "../data/sampleDrDocument";
+import { useRunPlayer } from "../hooks/useRunPlayer";
+import { AppShell } from "../components/AppShell";
+import { AgentFlowGraph } from "../components/flow";
+import { DspmEventsPanel } from "../components/DspmEventsPanel";
+import {
+  AuditTrailPanel,
+  HITLApprovalBar,
+  RunControls,
+  TokenCounter,
+  ToolCallCard,
+} from "../components/panels";
+
+const DEFAULT_DR_FILE = new File(
+  [SAMPLE_DR_DOCUMENT],
+  SAMPLE_DR_FILE_NAME,
+  { type: "text/plain", lastModified: Date.now() },
+);
+
+const HC_DR_FILE = new File(
+  [SAMPLE_HC_DOCUMENT],
+  SAMPLE_HC_FILE_NAME,
+  { type: "text/plain", lastModified: Date.now() },
+);
+
+// Pre-built test files the reviewer can switch between: a General-labeled credit
+// file (passes the Purview gate) and a Highly Confidential board document (blocked).
+const SAMPLE_CONTENT: Record<string, string> = {
+  [SAMPLE_DR_FILE_NAME]: SAMPLE_DR_DOCUMENT,
+  [SAMPLE_HC_FILE_NAME]: SAMPLE_HC_DOCUMENT,
+};
+
+export function CreditMemoPage() {
+  const [run, setRun] = useState<RunDef | null>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(DEFAULT_DR_FILE);
+  const [dragActive, setDragActive] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [docPreview, setDocPreview] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const sampleContent = attachedFile ? SAMPLE_CONTENT[attachedFile.name] : undefined;
+  const isSampleDoc = sampleContent !== undefined;
+
+  // Swap the attached file to one of the two pre-built test documents. Resets the
+  // preview so it re-reads the newly selected sample's content.
+  const selectSample = (file: File) => {
+    setAttachError(null);
+    setDocPreview(null);
+    setShowPreview(false);
+    setAttachedFile(file);
+  };
+
+  const attachFromFile = (file: File | undefined) => {
+    if (!file) return;
+    const allowed = /\.(pdf|doc|docx|txt)$/i.test(file.name);
+    if (!allowed) {
+      setAttachError("Attach a supported file (.pdf, .doc, .docx, .txt)");
+      return;
+    }
+    setAttachError(null);
+    setAttachedFile(file);
+  };
+
+  const onPickFile = (ev: ChangeEvent<HTMLInputElement>) => {
+    setDocPreview(null);
+    setShowPreview(false);
+    attachFromFile(ev.target.files?.[0]);
+  };
+
+  const onDropFile = (ev: DragEvent<HTMLLabelElement>) => {
+    ev.preventDefault();
+    setDragActive(false);
+    setDocPreview(null);
+    setShowPreview(false);
+    attachFromFile(ev.dataTransfer.files?.[0]);
+  };
+
+  const openDrPicker = () => {
+    const input = document.getElementById("dr-file-input") as HTMLInputElement | null;
+    input?.click();
+  };
+
+  const togglePreview = async () => {
+    if (showPreview) {
+      setShowPreview(false);
+      return;
+    }
+    if (docPreview === null && attachedFile) {
+      const text = sampleContent ?? (await attachedFile.text());
+      setDocPreview(text);
+    }
+    setShowPreview(true);
+  };
+
+  useEffect(() => {
+    if (!attachedFile) {
+      setRun(null);
+      return;
+    }
+    let live = true;
+    backend
+      .getRun("credit_memo", {
+        drDocument: {
+          file_name: attachedFile.name,
+          size_bytes: attachedFile.size,
+          mime_type: attachedFile.type || undefined,
+          last_modified_epoch_ms: attachedFile.lastModified,
+          uploaded_at: new Date().toISOString(),
+        },
+      })
+      .then((r) => live && setRun(r));
+    return () => {
+      live = false;
+    };
+  }, [attachedFile]);
+
+  const player = useRunPlayer(run);
+  const c = player.current;
+  const approvalGuidance = (c?.params as { approval_guidance?: { recommendation?: string; should_approve?: string[]; should_not_approve?: string[] } } | undefined)?.approval_guidance;
+
+  return (
+    <AppShell
+      hero={{
+        uc: "credit_memo",
+        ucLabel: "UC1 · Credit Memo",
+        crumb: "Credit Memo",
+        title: "Credit Memo Drafting Agent",
+        subtitle:
+          "A parent orchestrator plans a read-only, multi-step workflow and dispatches sub-agents to retrieve documents, compute ratios, summarize the bureau report, and assemble a memo draft. A human approves before anything is final.",
+        tags: run ? [`run ${run.run_id}`, run.applicant ?? ""] : [],
+      }}
+    >
+      <main className="page">
+        <div className="layout">
+          <div className="col">
+            <div className="panel">
+              <h2>Run controls</h2>
+              <p className="sub">Walk the orchestration step-by-step or play it through. The working agent is highlighted.</p>
+              <RunControls
+                status={player.status}
+                onPlay={player.play}
+                onPause={player.pause}
+                onStep={player.step}
+                onReset={player.reset}
+                disabled={!attachedFile || !run || !!run?.policyBlock}
+              />
+              <p className="sub" style={{ marginTop: 10, marginBottom: 0 }}>
+                Attach a supporting document in the DR node first, then start the run.
+              </p>
+            </div>
+
+            <div className="panel">
+              <h2>Document intake (DR)</h2>
+              <p className="sub">Click the DR node or drop a file here. The workflow starts only after a document is attached.</p>
+              <div className="dr-samples">
+                <span className="dr-samples-label">Test file:</span>
+                <button
+                  type="button"
+                  className={`dr-sample-btn${attachedFile?.name === SAMPLE_DR_FILE_NAME ? " active" : ""}`}
+                  onClick={() => selectSample(DEFAULT_DR_FILE)}
+                  aria-pressed={attachedFile?.name === SAMPLE_DR_FILE_NAME ? "true" : "false"}
+                >
+                  <span className="dr-sample-dot general" aria-hidden />
+                  General
+                  <small>passes — agent runs</small>
+                </button>
+                <button
+                  type="button"
+                  className={`dr-sample-btn${attachedFile?.name === SAMPLE_HC_FILE_NAME ? " active" : ""}`}
+                  onClick={() => selectSample(HC_DR_FILE)}
+                  aria-pressed={attachedFile?.name === SAMPLE_HC_FILE_NAME ? "true" : "false"}
+                >
+                  <span className="dr-sample-dot hc" aria-hidden />
+                  Highly Confidential
+                  <small>blocked by Purview</small>
+                </button>
+              </div>
+              <label
+                className={`dr-dropzone${dragActive ? " active" : ""}`}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setDragActive(false);
+                }}
+                onDrop={onDropFile}
+              >
+                <input id="dr-file-input" type="file" accept=".pdf,.doc,.docx,.txt" onChange={onPickFile} hidden />
+                <strong>{attachedFile ? attachedFile.name : "Drop credit file here or click to upload"}</strong>
+                <span>{attachedFile ? `${Math.ceil(attachedFile.size / 1024)} KB attached` : "Supported formats: PDF, DOC, DOCX, TXT"}</span>
+              </label>
+              {attachError ? <p className="dr-error">{attachError}</p> : null}
+              {run?.policyBlock ? (
+                <div className="policy-block-alert" role="alert">
+                  <div className="policy-block-head">
+                    <span className="policy-block-icon" aria-hidden>⛔</span>
+                    <div>
+                      <strong>Upload rejected · Microsoft Purview</strong>
+                      <span className="policy-block-sub">
+                        Sensitivity label <b>{run.policyBlock.label_full_name}</b> — blocked from agent ingestion.
+                      </span>
+                    </div>
+                    <span className="policy-block-pill">{run.policyBlock.label}</span>
+                  </div>
+                  <p className="policy-block-body">{run.policyBlock.justification}</p>
+                  <p className="policy-block-meta">
+                    File: {run.policyBlock.file_name} · Logged to Microsoft Purview audit + DSPM for AI
+                    {run.policyBlock.dspm_event_id ? ` · event ${run.policyBlock.dspm_event_id}` : ""}. Attach a
+                    General/Internal-labeled document to continue.
+                  </p>
+                </div>
+              ) : null}
+              {attachedFile && (isSampleDoc || attachedFile.type === "text/plain") ? (
+                <div className="dr-preview-controls">
+                  <button type="button" className="btn ghost" onClick={togglePreview}>
+                    {showPreview ? "Hide document" : "View sample document"}
+                  </button>
+                  {attachedFile?.name === SAMPLE_DR_FILE_NAME ? (
+                    <span className="dr-sample-tag">APP-1001 · General · credit file</span>
+                  ) : attachedFile?.name === SAMPLE_HC_FILE_NAME ? (
+                    <span className="dr-sample-tag hc">APP-1001 · Highly Confidential · board resolution</span>
+                  ) : null}
+                </div>
+              ) : null}
+              {showPreview && docPreview ? (
+                <pre className="dr-doc-view">{docPreview}</pre>
+              ) : null}
+            </div>
+
+            <div className="panel">
+              <h2>Agent pipeline</h2>
+              <p className="sub">memo_orchestrator (parent) → 4 sub-agents → HITL gate → final audited memo.</p>
+              <AgentFlowGraph agents={UC1_AGENTS} nodeStatus={player.nodeStatus} onNodeClick={(id) => id === "doc_retrieval" && openDrPicker()} />
+            </div>
+
+            <div className="panel">
+              <h2>Current step</h2>
+              <ToolCallCard step={c} />
+            </div>
+
+            <HITLApprovalBar
+              active={player.status === "awaiting_approval"}
+              resolved={player.approved && player.status === "done"}
+              guidance={approvalGuidance}
+              onApprove={player.approve}
+              onRequestEdits={player.reset}
+            />
+          </div>
+
+          <aside className="col">
+            <DspmEventsPanel compact />
+            <div className="panel">
+              <div className="rail-h">Token usage · live</div>
+              <TokenCounter
+                prompt={player.tokens.prompt}
+                completion={player.tokens.completion}
+                total={player.tokens.total}
+                cost={player.tokens.cost}
+                consumer={c?.agent}
+                model={c?.model}
+              />
+            </div>
+            <div className="panel">
+              <div className="rail-h">Audit trail · Cosmos</div>
+              <AuditTrailPanel audit={player.audit} />
+            </div>
+          </aside>
+        </div>
+      </main>
+    </AppShell>
+  );
+}

@@ -1,0 +1,71 @@
+# =============================================================================
+# backend.yml — Build the FastAPI orchestrator image, push to ACR, deploy to
+# Container Apps (agpoc-aca-orch-dev).
+#
+# AUTH: federated OIDC. Variables: AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID,
+# plus ACR_NAME (e.g. agpocacrdev) and ACA_APP/RG names (defaulted below).
+# =============================================================================
+name: backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  RESOURCE_GROUP: rg-agentic-poc-sea
+  ACA_APP: agpoc-aca-orch-dev
+  IMAGE_NAME: orchestrator
+
+jobs:
+  build-and-deploy:
+    name: Build + push + deploy orchestrator
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve image tag
+        id: tag
+        run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      # ACR build keeps the runner thin — no local Docker needed.
+      - name: ACR build + push
+        run: |
+          az acr build \
+            --registry ${{ vars.ACR_NAME }} \
+            --image ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
+            --image ${{ env.IMAGE_NAME }}:latest \
+            ./backend
+
+      - name: Deploy image to Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ env.ACA_APP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+
+      - name: Show app FQDN
+        run: |
+          fqdn=$(az containerapp show -n ${{ env.ACA_APP }} -g ${{ env.RESOURCE_GROUP }} \
+                 --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Orchestrator: https://$fqdn" >> "$GITHUB_STEP_SUMMARY"
+
+# NOTE: the orchestrator UAMI must be granted AcrPull on the registry for ACA to
+# pull the image. TODO(operator): assign 'AcrPull' to agpoc-id-orchestrator-dev
+# on the ACR (or add an acr role assignment to identity.bicep once ACR is added
+# to the Bicep — ACR is not in POC_SPEC.md, so it is provisioned out-of-band).

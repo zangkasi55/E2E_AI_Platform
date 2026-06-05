@@ -1,0 +1,130 @@
+// =============================================================================
+// token_usage.kql — saved KQL for the Agentic AI PoC Token Monitor
+// Run against the Application Insights / Log Analytics workspace (agpoc-law-dev).
+//
+// Canonical token record (POC_SPEC.md) is emitted per model call as BOTH:
+//   * a customMetric `gen_ai.token.usage` (value = total_tokens), AND
+//   * a customEvent  `gen_ai.token.usage` carrying the full dimensions:
+//       run_id, agent, step, model, prompt_tokens, completion_tokens,
+//       total_tokens, est_cost_usd, ts, use_case
+// The same record is also written to Cosmos `tokens` (pk /run_id) for the API.
+//
+// These queries power the UI Token Monitor panel + a pinned workbook.
+// Each query is standalone — copy the block you need.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// 0) Base projection — normalise the customEvent into typed columns (reused).
+//    Save this as a function `TokenUsage()` in the workspace for convenience.
+// -----------------------------------------------------------------------------
+customEvents
+| where name == "gen_ai.token.usage"
+| extend d = customDimensions
+| project
+    ts                = timestamp,
+    run_id            = tostring(d["run_id"]),
+    agent             = tostring(d["agent"]),
+    step              = toint(d["step"]),
+    model             = tostring(d["model"]),
+    use_case          = tostring(d["use_case"]),
+    prompt_tokens     = toint(d["prompt_tokens"]),
+    completion_tokens = toint(d["completion_tokens"]),
+    total_tokens      = toint(d["total_tokens"]),
+    est_cost_usd      = todouble(d["est_cost_usd"]);
+
+// -----------------------------------------------------------------------------
+// 1) TOKENS BY AGENT — headline panel (last 24h).
+// -----------------------------------------------------------------------------
+customEvents
+| where name == "gen_ai.token.usage"
+| where timestamp > ago(24h)
+| extend agent = tostring(customDimensions["agent"]),
+         total_tokens = toint(customDimensions["total_tokens"]),
+         est_cost_usd = todouble(customDimensions["est_cost_usd"])
+| summarize
+    total_tokens = sum(total_tokens),
+    est_cost_usd = round(sum(est_cost_usd), 4),
+    calls = count()
+  by agent
+| order by total_tokens desc;
+
+// -----------------------------------------------------------------------------
+// 2) TOKENS BY MODEL — gpt-4o vs gpt-4o-mini split (last 24h).
+// -----------------------------------------------------------------------------
+customEvents
+| where name == "gen_ai.token.usage"
+| where timestamp > ago(24h)
+| extend model = tostring(customDimensions["model"]),
+         prompt_tokens = toint(customDimensions["prompt_tokens"]),
+         completion_tokens = toint(customDimensions["completion_tokens"]),
+         total_tokens = toint(customDimensions["total_tokens"]),
+         est_cost_usd = todouble(customDimensions["est_cost_usd"])
+| summarize
+    prompt_tokens = sum(prompt_tokens),
+    completion_tokens = sum(completion_tokens),
+    total_tokens = sum(total_tokens),
+    est_cost_usd = round(sum(est_cost_usd), 4)
+  by model
+| order by total_tokens desc;
+
+// -----------------------------------------------------------------------------
+// 3) CUMULATIVE COST — running est. spend over time (5-min buckets, last 24h).
+//    Drives the cost line in the Token Monitor.
+// -----------------------------------------------------------------------------
+customEvents
+| where name == "gen_ai.token.usage"
+| where timestamp > ago(24h)
+| extend est_cost_usd = todouble(customDimensions["est_cost_usd"])
+| summarize cost = sum(est_cost_usd) by bin(timestamp, 5m)
+| order by timestamp asc
+| serialize
+| extend cumulative_cost_usd = round(row_cumsum(cost), 4)
+| project timestamp, interval_cost_usd = round(cost, 4), cumulative_cost_usd;
+
+// -----------------------------------------------------------------------------
+// 4) PER-RUN TIMELINE — every model call in a single run, ordered by step.
+//    Replace the run_id literal (or parameterise in the workbook).
+// -----------------------------------------------------------------------------
+let target_run_id = "REPLACE_WITH_RUN_ID";
+customEvents
+| where name == "gen_ai.token.usage"
+| extend run_id = tostring(customDimensions["run_id"])
+| where run_id == target_run_id
+| extend agent = tostring(customDimensions["agent"]),
+         step = toint(customDimensions["step"]),
+         model = tostring(customDimensions["model"]),
+         total_tokens = toint(customDimensions["total_tokens"]),
+         est_cost_usd = todouble(customDimensions["est_cost_usd"])
+| project timestamp, step, agent, model, total_tokens, est_cost_usd
+| order by step asc;
+
+// -----------------------------------------------------------------------------
+// 5) TOKENS BY USE CASE — credit_memo vs conversational_banking (last 7d).
+// -----------------------------------------------------------------------------
+customEvents
+| where name == "gen_ai.token.usage"
+| where timestamp > ago(7d)
+| extend use_case = tostring(customDimensions["use_case"]),
+         total_tokens = toint(customDimensions["total_tokens"]),
+         est_cost_usd = todouble(customDimensions["est_cost_usd"])
+| summarize total_tokens = sum(total_tokens),
+            est_cost_usd = round(sum(est_cost_usd), 4),
+            runs = dcount(tostring(customDimensions["run_id"]))
+  by use_case
+| order by total_tokens desc;
+
+// -----------------------------------------------------------------------------
+// 6) TOP RUNS BY COST — find the most expensive runs (last 7d).
+// -----------------------------------------------------------------------------
+customEvents
+| where name == "gen_ai.token.usage"
+| where timestamp > ago(7d)
+| extend run_id = tostring(customDimensions["run_id"]),
+         use_case = tostring(customDimensions["use_case"]),
+         total_tokens = toint(customDimensions["total_tokens"]),
+         est_cost_usd = todouble(customDimensions["est_cost_usd"])
+| summarize total_tokens = sum(total_tokens),
+            est_cost_usd = round(sum(est_cost_usd), 4),
+            steps = count()
+  by run_id, use_case
+| top 20 by est_cost_usd desc;
