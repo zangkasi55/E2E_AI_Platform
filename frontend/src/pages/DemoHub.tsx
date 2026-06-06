@@ -26,6 +26,15 @@ const CARDS: CardDef[] = [
     color: colors.agent,
   },
   {
+    to: "/credit-memo-16bit",
+    kicker: "UC1 · Arcade Mode",
+    title: "Credit Memo 16 bit",
+    desc:
+      "The same Credit Memo orchestration, re-skinned as a 16-bit RPG. Every agent is an animated pixel sprite in a throne room — watch them work, pause at the human gate, and celebrate on approval. Same real run, tokens, audit & DSPM data.",
+    glyph: "🎮",
+    color: colors.gov,
+  },
+  {
     to: "/banking",
     kicker: "UC2 · Conversational Banking",
     title: "Conversational Banking Control",

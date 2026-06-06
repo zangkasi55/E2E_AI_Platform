@@ -9,6 +9,7 @@ import { USE_MOCK } from "../lib";
 const NAV = [
   { to: "/", label: "Hub" },
   { to: "/credit-memo", label: "Credit Memo" },
+  { to: "/credit-memo-16bit", label: "Credit Memo 16 bit" },
   { to: "/banking", label: "Banking" },
   { to: "/governance", label: "Governance" },
   { to: "/test-expectations", label: "Test Expectations" },

@@ -5,6 +5,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { DemoHub } from "./pages/DemoHub";
 import { CreditMemoPage } from "./pages/CreditMemoPage";
+import { CreditMemo16BitPage } from "./pages/CreditMemo16BitPage";
 import { BankingPage } from "./pages/BankingPage";
 import { TokenMonitorDashboard } from "./pages/TokenMonitorDashboard";
 import { GovernancePage } from "./pages/GovernancePage";
@@ -15,6 +16,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<DemoHub />} />
       <Route path="/credit-memo" element={<CreditMemoPage />} />
+      <Route path="/credit-memo-16bit" element={<CreditMemo16BitPage />} />
       <Route path="/banking" element={<BankingPage />} />
       <Route path="/tokens" element={<TokenMonitorDashboard />} />
       <Route path="/governance" element={<GovernancePage />} />
