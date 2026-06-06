@@ -46,16 +46,29 @@ DEFAULT_THRESHOLD_THB = 5000.0
 # ---------------------------------------------------------------------------
 # Guardrail patterns — deterministic regexes scanned BEFORE any tool call.
 # These detect attempts to override safety policy / safety flags. Matching any
-# of them refuses the entire turn.
+# of them refuses the entire turn. Patterns are tried in order; first hit wins
+# and supplies the rule id used for the DSPM-for-AI risk taxonomy. They are kept
+# deliberately broad to catch natural-language prompt-injection / jailbreak
+# phrasings (ignore/disregard/forget/override/bypass, skip OTP/confirmation,
+# disable step-up, admin/system override, role impersonation, "do not log",
+# "mark as pre-authorised", "skip fraud checks", etc.).
 # ---------------------------------------------------------------------------
 GUARDRAIL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("override_rules", re.compile(r"ignore\s+(the\s+)?(bank\s+)?(rules|policy|policies|instructions)", re.I)),
-    ("skip_otp", re.compile(r"\b(skip|bypass|disable|no)\s+(the\s+)?otp\b", re.I)),
-    ("skip_confirmation", re.compile(r"\b(no|skip|without|disable)\s+(confirmation|approval)\b", re.I)),
-    ("disable_step_up", re.compile(r"disable\s+(the\s+)?step[- ]?up(\s+auth(entication)?)?", re.I)),
-    ("admin_mode", re.compile(r"\b(admin|developer|system)\s+mode\b", re.I)),
-    ("ignore_previous", re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts)", re.I)),
-    ("force_execute", re.compile(r"\b(force|just)\s+(execute|move|send|transfer)\b.*\b(now|immediately|no\s+confirmation)\b", re.I)),
+    # Instruction override / UPIA — "ignore/disregard/forget (all) previous instructions".
+    ("ignore_previous", re.compile(r"\b(ignore|disregard|forget)\s+(all\s+)?(the\s+)?(previous|prior|above)\s+(instruction|prompt|message)", re.I)),
+    # Policy override — ignore/disregard/forget/override/bypass ... rules/policy/control/fraud check/daily limit.
+    ("override_rules", re.compile(r"\b(ignore|disregard|forget|override|bypass)\b[\w\s']{0,24}?\b(rule|polic(?:y|ies)|control|fraud\s+check|daily\s+limit)", re.I)),
+    # Authentication bypass — OTP.
+    ("skip_otp", re.compile(r"\b(skip|bypass|disable|no|without|don'?t\s+(?:require|ask\s+for|need))\b[\w\s']{0,15}?\botp\b", re.I)),
+    # Authentication bypass — step-up auth.
+    ("disable_step_up", re.compile(r"\b(disable|skip|bypass|without|no|don'?t\s+(?:require|need))\b[\w\s']{0,12}?step[- ]?up", re.I)),
+    # Control bypass — confirmation / approval.
+    ("skip_confirmation", re.compile(r"\b(skip|no|without|disable|do\s+not|don'?t)\b[\w\s']{0,15}?\b(confirmation|confirm|approval)\b", re.I)),
+    # Privilege escalation / role impersonation — admin·system override, act-as, granted permission.
+    ("admin_mode", re.compile(r"\b(admin|developer|system)\s+(mode|override)\b|\b(act\s+as|you\s+have\s+permission|bank\s+manager)\b", re.I)),
+    # Risky unauthorized action — force/just execute, do-not-log, pre-authorise, skip fraud checks.
+    ("force_execute", re.compile(r"\b(force|just)\s+(execute|move|send|transfer|pay)\b|\b(do\s+not|don'?t)\s+log\b|\bmark\s+it\s+as\s+pre-?authoris|\bskip\s+fraud\s+check", re.I)),
+    # Direct money-movement intent — execute/complete/finalize the transfer/payment.
     ("move_money_directly", re.compile(r"\b(execute|complete|finalize)\s+(the\s+)?(transfer|payment)\b", re.I)),
 ]
 
