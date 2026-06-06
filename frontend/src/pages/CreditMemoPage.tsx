@@ -133,6 +133,15 @@ export function CreditMemoPage() {
   const c = player.current;
   const approvalGuidance = (c?.params as { approval_guidance?: { recommendation?: string; should_approve?: string[]; should_not_approve?: string[] } } | undefined)?.approval_guidance;
 
+  const handlePlay = () => {
+    if (player.status === "done" || player.status === "blocked") {
+      player.reset();
+      window.setTimeout(() => player.play(), 0);
+      return;
+    }
+    player.play();
+  };
+
   return (
     <AppShell
       hero={{
@@ -153,11 +162,12 @@ export function CreditMemoPage() {
               <p className="sub">Walk the orchestration step-by-step or play it through. The working agent is highlighted.</p>
               <RunControls
                 status={player.status}
-                onPlay={player.play}
+                onPlay={handlePlay}
                 onPause={player.pause}
                 onStep={player.step}
                 onReset={player.reset}
                 disabled={!attachedFile || !run || !!run?.policyBlock}
+                allowReplayTerminal
               />
               <p className="sub" style={{ marginTop: 10, marginBottom: 0 }}>
                 Attach a supporting document in the DR node first, then start the run.
