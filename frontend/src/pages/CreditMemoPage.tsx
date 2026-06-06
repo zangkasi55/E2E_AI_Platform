@@ -50,6 +50,8 @@ export function CreditMemoPage() {
   const [attachedFile, setAttachedFile] = useState<File>(DEFAULT_DR_FILE);
   const [dragActive, setDragActive] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
+  const [runLoadState, setRunLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [runLoadMessage, setRunLoadMessage] = useState<string>("Sample document attached. Click Play to run.");
   const [docPreview, setDocPreview] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   // Set when Play should begin once a freshly fetched run is loaded.
@@ -111,33 +113,53 @@ export function CreditMemoPage() {
     setShowPreview(true);
   };
 
-  const fetchRun = () => {
+  const fetchRun = (file: File, reason: "init" | "file-change" | "play" | "play-fallback") => {
     const seq = ++runLoadSeq.current;
+    const source = reason === "play-fallback" ? "sample" : file === DEFAULT_DR_FILE ? "sample" : "uploaded";
+    setRunLoadState("loading");
+    setRunLoadMessage(
+      source === "sample"
+        ? "Preparing sample run..."
+        : `Preparing run from uploaded file (${file.name})...`,
+    );
     return backend
       .getRun("credit_memo", {
         drDocument: {
-          file_name: attachedFile.name,
-          size_bytes: attachedFile.size,
-          mime_type: attachedFile.type || undefined,
-          last_modified_epoch_ms: attachedFile.lastModified,
+          file_name: file.name,
+          size_bytes: file.size,
+          mime_type: file.type || undefined,
+          last_modified_epoch_ms: file.lastModified,
           uploaded_at: new Date().toISOString(),
         },
       })
       .then((r) => {
         if (seq !== runLoadSeq.current) return null;
         setAttachError(null);
+        setRunLoadState("ready");
+        setRunLoadMessage(
+          source === "sample"
+            ? "Sample run is ready."
+            : `Run ready from uploaded file (${file.name}).`,
+        );
         setRun(r);
         return r;
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (seq !== runLoadSeq.current) return null;
+        const detail = err instanceof Error && err.message ? ` (${err.message})` : "";
+        setRunLoadState("error");
+        setRunLoadMessage(
+          source === "sample"
+            ? `Sample run preload failed. Please try again${detail}.`
+            : `Uploaded file run preload failed (${file.name})${detail}.`,
+        );
         setRun(null);
         return null;
       });
   };
 
   useEffect(() => {
-    void fetchRun();
+    void fetchRun(attachedFile, "file-change");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachedFile]);
 
@@ -154,6 +176,7 @@ export function CreditMemoPage() {
   }, [run?.run_id, player.run?.run_id, player.status]);
 
   const handlePlay = () => {
+    if (runLoadState === "loading") return;
     // If run is present but reducer state has not consumed it yet, queue play.
     if (run && !player.run) {
       pendingPlay.current = true;
@@ -162,9 +185,23 @@ export function CreditMemoPage() {
     if (!run) {
       pendingPlay.current = true;
       setAttachError(null);
-      void fetchRun()
+      void fetchRun(attachedFile, "play")
         .then((r) => {
           if (!r) {
+            // If uploaded file preload fails, automatically fall back to sample.
+            if (attachedFile !== DEFAULT_DR_FILE) {
+              setAttachedFile(DEFAULT_DR_FILE);
+              setRunLoadMessage("Uploaded file failed. Falling back to sample document...");
+              void fetchRun(DEFAULT_DR_FILE, "play-fallback").then((sampleRun) => {
+                if (!sampleRun) {
+                  pendingPlay.current = false;
+                  setAttachError("Run preload failed for both uploaded and sample files.");
+                  return;
+                }
+                setAttachError(null);
+              });
+              return;
+            }
             pendingPlay.current = false;
             setAttachError("Run preload failed. Please try again.");
           }
@@ -212,6 +249,9 @@ export function CreditMemoPage() {
               />
               <p className="sub" style={{ marginTop: 10, marginBottom: 0 }}>
                 Attach a supporting document in the DR node first, then start the run.
+              </p>
+              <p className={`sub ${runLoadState === "error" ? "dr-error" : ""}`} style={{ marginTop: 6, marginBottom: 0 }}>
+                {runLoadMessage}
               </p>
             </div>
 
@@ -262,6 +302,7 @@ export function CreditMemoPage() {
                 <span>{attachedFile ? `${Math.ceil(attachedFile.size / 1024)} KB attached` : "Supported formats: PDF, DOC, DOCX, TXT"}</span>
               </label>
               {attachError ? <p className="dr-error">{attachError}</p> : null}
+              {runLoadState === "loading" ? <p className="sub">Upload status: preparing run...</p> : null}
               {run?.policyBlock ? (
                 <div className="policy-block-alert" role="alert">
                   <div className="policy-block-head">
