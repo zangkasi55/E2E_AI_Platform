@@ -4,7 +4,7 @@
 // Right rail: audit trail + live token counter. Read-only workflow; the memo is
 // never final without human approval (POC_SPEC §UC1 hard rule).
 // =============================================================================
-import { useEffect, useState, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import type { RunDef } from "../types";
 import { backend } from "../lib";
 import { UC1_AGENTS } from "../data/mockData";
@@ -52,6 +52,8 @@ export function CreditMemoPage() {
   const [attachError, setAttachError] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  // Set when Play should begin once a freshly fetched run is loaded.
+  const pendingPlay = useRef(false);
 
   const sampleContent = attachedFile ? SAMPLE_CONTENT[attachedFile.name] : undefined;
   const isSampleDoc = sampleContent !== undefined;
@@ -123,7 +125,15 @@ export function CreditMemoPage() {
           uploaded_at: new Date().toISOString(),
         },
       })
-      .then((r) => live && setRun(r));
+      .then((r) => {
+        if (!live) return;
+        setAttachError(null);
+        setRun(r);
+      })
+      .catch(() => {
+        if (!live) return;
+        setRun(null);
+      });
     return () => {
       live = false;
     };
@@ -133,7 +143,39 @@ export function CreditMemoPage() {
   const c = player.current;
   const approvalGuidance = (c?.params as { approval_guidance?: { recommendation?: string; should_approve?: string[]; should_not_approve?: string[] } } | undefined)?.approval_guidance;
 
+  useEffect(() => {
+    if (pendingPlay.current && run) {
+      pendingPlay.current = false;
+      player.play();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.run_id]);
+
   const handlePlay = () => {
+    if (!attachedFile) return;
+    if (!run) {
+      pendingPlay.current = true;
+      setAttachError(null);
+      backend
+        .getRun("credit_memo", {
+          drDocument: {
+            file_name: attachedFile.name,
+            size_bytes: attachedFile.size,
+            mime_type: attachedFile.type || undefined,
+            last_modified_epoch_ms: attachedFile.lastModified,
+            uploaded_at: new Date().toISOString(),
+          },
+        })
+        .then((r) => {
+          setAttachError(null);
+          setRun(r);
+        })
+        .catch(() => {
+          pendingPlay.current = false;
+          setAttachError("Run preload failed. Please try again.");
+        });
+      return;
+    }
     if (player.status === "done" || player.status === "blocked") {
       player.reset();
       window.setTimeout(() => player.play(), 0);
@@ -166,7 +208,7 @@ export function CreditMemoPage() {
                 onPause={player.pause}
                 onStep={player.step}
                 onReset={player.reset}
-                disabled={!attachedFile || !run || !!run?.policyBlock}
+                disabled={!attachedFile || !!run?.policyBlock}
                 allowReplayTerminal
               />
               <p className="sub" style={{ marginTop: 10, marginBottom: 0 }}>
