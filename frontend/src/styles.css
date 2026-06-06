@@ -146,11 +146,11 @@ button {
 .page { max-width: 1120px; margin: 0 auto; padding: 18px 20px 48px; }
 .layout {
   display: grid;
-  grid-template-columns: 1fr 384px;
+  grid-template-columns: minmax(0, 1fr) 384px;
   gap: 18px;
   align-items: start;
 }
-.col { display: flex; flex-direction: column; gap: 16px; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
 .panel {
   background: var(--panel);
@@ -158,6 +158,7 @@ button {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 16px;
+  min-width: 0;
 }
 .panel h2 {
   margin: 0 0 4px;
@@ -447,6 +448,7 @@ button {
   line-height: 1.55;
   overflow-x: auto;
   white-space: pre;
+  max-width: 100%;
 }
 .jsonblock .k { color: #7cc7ff; }
 .jsonblock .s { color: #9ee493; }
