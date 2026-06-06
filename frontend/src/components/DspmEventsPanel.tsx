@@ -34,6 +34,15 @@ function sourceOf(ev: DspmEvent): string {
   return (isPrompt ? ev.prompt_preview : ev.file_name) || ev.use_case;
 }
 
+function promptDetectorOf(ev: DspmEvent): string {
+  if (ev.event_type !== "prompt_injection_block") return "";
+  if (ev.detection_source === "azure_ai_foundry_guardrail") {
+    const name = ev.guardrail_policy_name || ev.guardrail_policy_id || "Foundry policy";
+    return `Detected by ${ev.guardrail_provider || "Azure AI Foundry"} (${name})`;
+  }
+  return "Detected by deterministic guardrail";
+}
+
 interface DspmEventsPanelProps {
   /** When provided, the panel renders these and does not self-fetch. */
   events?: DspmEvent[];
@@ -87,6 +96,7 @@ export function DspmEventsPanel({ events: provided, compact = false, limit = 50 
                   </div>
                   <div className="dspm-c-class">{classificationOf(ev)}</div>
                   <div className={isPrompt ? "dspm-c-src dspm-prompt" : "dspm-c-src"}>{sourceOf(ev)}</div>
+                  {isPrompt ? <div className="dspm-c-class">{promptDetectorOf(ev)}</div> : null}
                 </li>
               );
             })}
@@ -141,7 +151,10 @@ export function DspmEventsPanel({ events: provided, compact = false, limit = 50 
                     </td>
                     <td>{classificationOf(ev)}</td>
                     <td className={isPrompt ? "dspm-prompt" : undefined}>{sourceOf(ev)}</td>
-                    <td>{ev.detail}</td>
+                    <td>
+                      {ev.detail}
+                      {isPrompt ? <div className="sub">{promptDetectorOf(ev)}</div> : null}
+                    </td>
                   </tr>
                 );
               })}

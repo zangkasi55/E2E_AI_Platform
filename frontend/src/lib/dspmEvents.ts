@@ -21,6 +21,11 @@ export interface DspmEvent {
   // Prompt-risk events (conversational-banking guardrail blocks).
   risk_category?: string;
   guardrail_rule?: string;
+  detection_source?: string;
+  guardrail_provider?: string;
+  guardrail_policy_id?: string;
+  guardrail_policy_name?: string;
+  guardrail_mode?: string;
   prompt_preview?: string;
   run_id: string;
   user: string;

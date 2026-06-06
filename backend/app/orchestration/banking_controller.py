@@ -195,6 +195,18 @@ class BankingController:
                 matched=matched,
                 user=msg.user_id,
                 use_case=USE_CASE,
+                detection_source=(
+                    "azure_ai_foundry_guardrail"
+                    if (
+                        settings.foundry_guardrail_policy_id
+                        or settings.foundry_guardrail_policy_name
+                    )
+                    else "deterministic_guardrail"
+                ),
+                guardrail_provider=settings.foundry_guardrail_provider,
+                guardrail_policy_id=settings.foundry_guardrail_policy_id or None,
+                guardrail_policy_name=settings.foundry_guardrail_policy_name or None,
+                guardrail_mode=settings.foundry_guardrail_mode,
             )
             run.status = RunStatus.REFUSED
             audit_store.save_run(run)

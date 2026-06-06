@@ -170,6 +170,11 @@ def emit_prompt_risk_event(
     matched: str,
     user: str,
     use_case: str = "banking",
+    detection_source: str = "deterministic_guardrail",
+    guardrail_provider: Optional[str] = None,
+    guardrail_policy_id: Optional[str] = None,
+    guardrail_policy_name: Optional[str] = None,
+    guardrail_mode: Optional[str] = None,
 ) -> dict[str, Any]:
     """Record a risky/prompt-injection block as a Purview/DSPM-for-AI event.
 
@@ -185,6 +190,11 @@ def emit_prompt_risk_event(
             "severity": "high",
             "risk_category": category,
             "guardrail_rule": rule,
+            "detection_source": detection_source,
+            "guardrail_provider": guardrail_provider,
+            "guardrail_policy_id": guardrail_policy_id,
+            "guardrail_policy_name": guardrail_policy_name,
+            "guardrail_mode": guardrail_mode,
             "matched_text": matched,
             "prompt_preview": _redact_prompt(prompt),
             "run_id": run_id,
@@ -192,7 +202,8 @@ def emit_prompt_risk_event(
             "use_case": use_case,
             "detail": (
                 f"Risky prompt refused by safety guardrail ({rule}) before any tool "
-                "call. Captured by DSPM for AI as risky AI usage."
+                f"call. Detection source={detection_source}. Captured by DSPM for AI "
+                "as risky AI usage."
             ),
             "dspm_for_ai_enabled": settings.dspm_for_ai_enabled,
             "defender_ai_plan_enabled": settings.defender_ai_plan_enabled,
