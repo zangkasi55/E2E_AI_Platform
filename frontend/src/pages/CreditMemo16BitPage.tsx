@@ -226,6 +226,12 @@ export function CreditMemo16BitPage() {
   const statusLabel = blocked ? "BLOCKED" : player.status.replace("_", " ").toUpperCase();
   const statusClass = blocked ? "blocked" : player.status;
 
+  // ---- HITL agent recommendation (approve / reject) ----
+  const approvalGuidance = (player.current?.params as
+    | { approval_guidance?: { recommendation?: string; should_approve?: string[]; should_not_approve?: string[] } }
+    | undefined)?.approval_guidance;
+  const recommendation = (approvalGuidance?.recommendation ?? "review").toUpperCase();
+
   // ---- MO speech bubble ----
   let bubble = "Attach a document and start the run.";
   let tone = "";
@@ -236,7 +242,7 @@ export function CreditMemo16BitPage() {
     bubble = "A policy gate blocked this run.";
     tone = "bad";
   } else if (player.status === "awaiting_approval") {
-    bubble = "Human review needed — approve or reject the draft.";
+    bubble = `Human review needed — HITL agent recommends ${recommendation}. Approve or reject the draft.`;
     tone = "warn";
   } else if (player.status === "done") {
     bubble = "Memo draft assembled, approved & fully audited!";
@@ -426,10 +432,22 @@ export function CreditMemo16BitPage() {
                   </div>
                 )}
                 {player.status === "awaiting_approval" && (
-                  <div className="cm16-btnrow mt10">
-                    <button type="button" className="cm16-btn approve" onClick={() => player.approve("Approved in 16-bit review")}>✔ APPROVE</button>
-                    <button type="button" className="cm16-btn reject" onClick={() => player.reject("Rejected in 16-bit review")}>✖ REJECT</button>
-                  </div>
+                  <>
+                    <div className={`cm16-hitl-rec ${approvalGuidance?.recommendation === "approve" ? "good" : approvalGuidance?.recommendation === "reject" ? "bad" : ""}`}>
+                      <span className="lbl">HITL agent recommendation</span>
+                      <span className="val">{recommendation}</span>
+                    </div>
+                    {approvalGuidance?.should_approve?.length ? (
+                      <div className="cm16-hitl-reasons">▸ Reasons to approve: {approvalGuidance.should_approve.join("; ")}</div>
+                    ) : null}
+                    {approvalGuidance?.should_not_approve?.length ? (
+                      <div className="cm16-hitl-reasons bad">▸ Reasons to reject: {approvalGuidance.should_not_approve.join("; ")}</div>
+                    ) : null}
+                    <div className="cm16-btnrow mt10">
+                      <button type="button" className="cm16-btn approve" onClick={() => player.approve("Approved in 16-bit review")}>✔ APPROVE</button>
+                      <button type="button" className="cm16-btn reject" onClick={() => player.reject("Rejected in 16-bit review")}>✖ REJECT</button>
+                    </div>
+                  </>
                 )}
               </div>
             </div>

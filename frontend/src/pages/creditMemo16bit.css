@@ -316,6 +316,31 @@
 .cm16-badge.done { background: var(--c-green); color: #062414; }
 .cm16-badge.blocked { background: var(--c-red); color: #fff; }
 
+/* ---- HITL agent recommendation ----------------------------------------- */
+.cm16-hitl-rec {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 2px solid #000;
+  background: #2a2350;
+}
+.cm16-hitl-rec .lbl { font-size: 11px; color: var(--c-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.cm16-hitl-rec .val {
+  font-family: "Press Start 2P", monospace;
+  font-size: 9px;
+  padding: 4px 7px;
+  border: 2px solid #000;
+  background: var(--c-gold);
+  color: #2a1d00;
+}
+.cm16-hitl-rec.good .val { background: var(--c-green); color: #062414; }
+.cm16-hitl-rec.bad .val { background: var(--c-red); color: #fff; }
+.cm16-hitl-reasons { margin-top: 6px; font-size: 12px; line-height: 1.4; color: var(--c-dim); }
+.cm16-hitl-reasons.bad { color: var(--c-red); }
+
 /* ---- document intake ---------------------------------------------------- */
 .cm16-filebtns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .cm16-fb {
