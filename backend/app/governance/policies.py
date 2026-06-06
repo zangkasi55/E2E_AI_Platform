@@ -91,11 +91,22 @@ def component_wiring() -> list[dict[str, Any]]:
     return [
         {
             "component": "Entra ID",
-            "configured": bool(settings.azure_tenant_id and settings.entra_ui_client_id),
+            # The platform's Entra wiring is the orchestrator workload identity
+            # (UAMI). There is no separate UI SPA app registration in this PoC,
+            # so wiring is satisfied by tenant + any agent/tool/UI client id.
+            "configured": bool(
+                settings.azure_tenant_id
+                and (
+                    settings.entra_orchestrator_client_id
+                    or settings.entra_tool_bridge_client_id
+                    or settings.entra_ui_client_id
+                )
+            ),
             "details": {
                 "tenant_id": settings.azure_tenant_id,
-                "ui_client_id": settings.entra_ui_client_id,
+                "orchestrator_client_id": settings.entra_orchestrator_client_id,
                 "tool_bridge_client_id": settings.entra_tool_bridge_client_id,
+                "ui_client_id": settings.entra_ui_client_id,
             },
         },
         {

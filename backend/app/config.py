@@ -78,7 +78,10 @@ class Settings(BaseSettings):
     servicebus_hitl_queue: str = "hitl-approvals"
 
     # ---- Entra ID workload identity ----------------------------------------
-    azure_tenant_id: str = os.getenv("AZURE_TENANT_ID", "")
+    # Canonical PoC tenant (ddcbdc96…) used as the default so the platform's
+    # Entra wiring resolves even when AZURE_TENANT_ID is not injected as an env
+    # var. Override per-environment via the AZURE_TENANT_ID env var.
+    azure_tenant_id: str = os.getenv("AZURE_TENANT_ID", "ddcbdc96-6162-4d91-bb0d-066343049ce1")
     # Fallback to AZURE_CLIENT_ID so Container Apps UAMI works without a
     # duplicate ENTRA_ORCHESTRATOR_CLIENT_ID env var.
     entra_orchestrator_client_id: str = os.getenv("ENTRA_ORCHESTRATOR_CLIENT_ID", os.getenv("AZURE_CLIENT_ID", ""))
@@ -86,10 +89,13 @@ class Settings(BaseSettings):
     entra_ui_client_id: str = ""
 
     # ---- Purview governance ------------------------------------------------
-    purview_catalog_endpoint: str = ""
-    purview_studio_url: str = ""
+    # Canonical tenant Purview account (pview-isaru66-default-001). The catalog
+    # endpoint is tenant-keyed. These defaults are display/wiring values; live
+    # Purview SDK calls are still gated by ``mock_mode`` (see sensitivity.py).
+    purview_catalog_endpoint: str = "https://ddcbdc96-6162-4d91-bb0d-066343049ce1-api.purview-service.microsoft.com/catalog"
+    purview_studio_url: str = "https://purview.microsoft.com/"
     # Purview account name (used by the Purview SDK in live mode).
-    purview_account_name: str = ""
+    purview_account_name: str = "pview-isaru66-default-001"
     # Purview collection that the agent data sources are registered under. Used
     # by the per-agent governance bindings (governance/agent_bindings.py).
     purview_collection: str = "agentic-poc"
@@ -105,8 +111,11 @@ class Settings(BaseSettings):
     dspm_for_ai_enabled: bool = True
 
     # ---- Azure AI Foundry guardrails ---------------------------------------
+    # Custom blocking RAI policy (scbx-guardrail-v1) attached to the gpt-4o /
+    # gpt-4o-mini deployments on agpoc-aifoundry-dev. Set as the canonical
+    # default so the governance guardrail wiring reflects the enforced policy.
     foundry_guardrail_policy_id: str = ""
-    foundry_guardrail_policy_name: str = ""
+    foundry_guardrail_policy_name: str = "scbx-guardrail-v1"
     foundry_guardrail_mode: str = "enforce"
     foundry_guardrail_provider: str = "Azure AI Foundry"
 
