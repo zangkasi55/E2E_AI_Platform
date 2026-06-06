@@ -341,6 +341,96 @@
 .cm16-hitl-reasons { margin-top: 6px; font-size: 12px; line-height: 1.4; color: var(--c-dim); }
 .cm16-hitl-reasons.bad { color: var(--c-red); }
 
+/* ---- HITL reviewer note ------------------------------------------------- */
+.cm16-note-wrap { margin-top: 10px; }
+.cm16-note-wrap label {
+  display: block;
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  line-height: 1.5;
+  color: var(--c-cyan);
+  margin-bottom: 6px;
+}
+.cm16-note {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: "VT323", monospace;
+  font-size: 16px;
+  color: var(--c-text);
+  background: #0e0a2a;
+  border: 2px solid var(--c-border);
+  padding: 7px 9px;
+  resize: vertical;
+}
+.cm16-note:focus { outline: none; border-color: var(--c-cyan); }
+.cm16-note-err { margin-top: 6px; color: var(--c-red); font-size: 13px; }
+
+/* ---- HITL resolved confirmation ----------------------------------------- */
+.cm16-hitl-resolved {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
+  border: 2px solid var(--c-border);
+  background: #0e0a2a;
+}
+.cm16-hitl-resolved.good { border-color: var(--c-green); }
+.cm16-hitl-resolved.bad { border-color: var(--c-red); }
+.cm16-hitl-resolved b { font-size: 9px; }
+.cm16-hitl-resolved.good b { color: var(--c-green); }
+.cm16-hitl-resolved.bad b { color: var(--c-red); }
+.cm16-hitl-resolved span { font-size: 14px; line-height: 1.4; color: var(--c-text); }
+.cm16-hitl-resolved small { font-size: 13px; color: var(--c-dim); }
+
+/* ---- current step (tool-call detail) ------------------------------------ */
+.cm16-step-card { display: flex; flex-direction: column; gap: 8px; }
+.cm16-step-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.cm16-step-idx {
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  color: var(--c-gold);
+  background: #2a1d00;
+  border: 2px solid #000;
+  padding: 3px 6px;
+}
+.cm16-step-title { font-size: 16px; color: var(--c-text); }
+.cm16-step-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.cm16-sbadge {
+  font-family: "Press Start 2P", monospace;
+  font-size: 7px;
+  line-height: 1.4;
+  padding: 4px 6px;
+  border: 2px solid #000;
+  background: var(--c-panel2);
+  color: var(--c-text);
+}
+.cm16-sbadge.dim { color: var(--c-dim); }
+.cm16-sbadge.model { background: var(--c-cyan); color: #042430; }
+.cm16-sbadge.tool { background: var(--c-gold); color: #2a1d00; }
+.cm16-sbadge.apim { background: #8b6cff; color: #0b0820; }
+.cm16-sbadge.hitl { background: #ffb347; color: #2a1500; }
+.cm16-sbadge.bad { background: var(--c-red); color: #fff; }
+.cm16-step-detail { font-size: 14px; line-height: 1.45; color: var(--c-text); }
+.cm16-step-params {
+  font-family: "VT323", monospace;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--c-cyan);
+  background: #0e0a2a;
+  border: 2px solid var(--c-border);
+  padding: 8px;
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cm16-step-result { font-size: 14px; line-height: 1.4; color: var(--c-green); }
+
+/* ---- token consumer ----------------------------------------------------- */
+.cm16-tok-consumer { margin-top: 6px; font-size: 13px; color: var(--c-cyan); }
+
 /* ---- document intake ---------------------------------------------------- */
 .cm16-filebtns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .cm16-fb {

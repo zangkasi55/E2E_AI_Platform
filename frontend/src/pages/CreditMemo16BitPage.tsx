@@ -104,6 +104,8 @@ export function CreditMemo16BitPage() {
   const [dragActive, setDragActive] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<string | null>(null);
+  const [reviewerNote, setReviewerNote] = useState("");
+  const [rejectError, setRejectError] = useState<string | null>(null);
   const pendingPlay = useRef(false);
   const seq = useRef(0);
 
@@ -226,8 +228,12 @@ export function CreditMemo16BitPage() {
   const statusLabel = blocked ? "BLOCKED" : player.status.replace("_", " ").toUpperCase();
   const statusClass = blocked ? "blocked" : player.status;
 
+  // ---- current step (tool-call detail) ----
+  const cur = player.current;
+  const hitlResolved = !!player.hitlDecision && (player.status === "done" || player.status === "blocked");
+
   // ---- HITL agent recommendation (approve / reject) ----
-  const approvalGuidance = (player.current?.params as
+  const approvalGuidance = (cur?.params as
     | { approval_guidance?: { recommendation?: string; should_approve?: string[]; should_not_approve?: string[] } }
     | undefined)?.approval_guidance;
   const recommendation = (approvalGuidance?.recommendation ?? "review").toUpperCase();
@@ -443,11 +449,81 @@ export function CreditMemo16BitPage() {
                     {approvalGuidance?.should_not_approve?.length ? (
                       <div className="cm16-hitl-reasons bad">▸ Reasons to reject: {approvalGuidance.should_not_approve.join("; ")}</div>
                     ) : null}
+                    <div className="cm16-note-wrap">
+                      <label htmlFor="cm16-reviewer-note">Reviewer note (required to reject · optional to approve)</label>
+                      <textarea
+                        id="cm16-reviewer-note"
+                        className="cm16-note"
+                        rows={3}
+                        value={reviewerNote}
+                        placeholder="Type the human reviewer's note or rejection reason..."
+                        onChange={(e) => {
+                          setReviewerNote(e.target.value);
+                          if (rejectError) setRejectError(null);
+                        }}
+                      />
+                      {rejectError && <div className="cm16-note-err">⚠ {rejectError}</div>}
+                    </div>
                     <div className="cm16-btnrow mt10">
-                      <button type="button" className="cm16-btn approve" onClick={() => player.approve("Approved in 16-bit review")}>✔ APPROVE</button>
-                      <button type="button" className="cm16-btn reject" onClick={() => player.reject("Rejected in 16-bit review")}>✖ REJECT</button>
+                      <button
+                        type="button"
+                        className="cm16-btn approve"
+                        onClick={() => player.approve(reviewerNote.trim() || "Approved in 16-bit review")}
+                      >✔ APPROVE</button>
+                      <button
+                        type="button"
+                        className="cm16-btn reject"
+                        onClick={() => {
+                          const trimmed = reviewerNote.trim();
+                          if (!trimmed) {
+                            setRejectError("Please provide a rejection reason.");
+                            return;
+                          }
+                          player.reject(trimmed);
+                        }}
+                      >✖ REJECT</button>
                     </div>
                   </>
+                )}
+                {hitlResolved && (
+                  <div className={`cm16-hitl-resolved ${player.hitlDecision === "approved" ? "good" : "bad"}`}>
+                    <b className="pixel">{player.hitlDecision === "approved" ? "✔ APPROVED BY REVIEWER" : "✖ REJECTED BY REVIEWER"}</b>
+                    <span>
+                      {player.hitlDecision === "approved"
+                        ? "Durable Functions resumed · final memo committed with full audit trail."
+                        : "Workflow rejected by human review · moved to a terminal blocked state."}
+                    </span>
+                    {player.hitlReason && <small>Reviewer note: {player.hitlReason}</small>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ---- current step (tool-call detail) ---- */}
+            <div className="cm16-box">
+              <h3>📟 Current Step</h3>
+              <div className="pad">
+                {cur ? (
+                  <div className="cm16-step-card">
+                    <div className="cm16-step-head">
+                      <span className="cm16-step-idx">STEP {cur.step}</span>
+                      <span className="cm16-step-title">{cur.title}</span>
+                    </div>
+                    <div className="cm16-step-badges">
+                      <span className="cm16-sbadge">{cur.stage ?? cur.agent}</span>
+                      <span className={`cm16-sbadge ${cur.model ? "model" : "dim"}`}>{cur.model ?? "no model"}</span>
+                      {cur.tool && <span className="cm16-sbadge tool">{cur.tool}</span>}
+                      {cur.chainTool && <span className="cm16-sbadge tool">+ {cur.chainTool}</span>}
+                      {cur.apim && <span className="cm16-sbadge apim">via APIM · scope-checked</span>}
+                      {cur.hitl && <span className="cm16-sbadge hitl">HITL pause</span>}
+                      {cur.blocked && <span className="cm16-sbadge bad">guardrail block</span>}
+                    </div>
+                    {cur.detail && <div className="cm16-step-detail">{cur.detail}</div>}
+                    {cur.params && <pre className="cm16-step-params">{JSON.stringify(cur.params, null, 2)}</pre>}
+                    {cur.result && <div className="cm16-step-result">{cur.result}</div>}
+                  </div>
+                ) : (
+                  <div className="cm16-empty">Press PLAY to start — the current tool call appears here.</div>
                 )}
               </div>
             </div>
@@ -483,6 +559,9 @@ export function CreditMemo16BitPage() {
                   <div className="cm16-tcell total"><div className="k">TOTAL</div><div className="v tnum">{fmt(player.tokens.total)}</div></div>
                 </div>
                 <div className="cm16-cost">EST COST  ${player.tokens.cost.toFixed(4)}</div>
+                {cur?.agent && (
+                  <div className="cm16-tok-consumer">⬡ {cur.agent}{cur.model ? ` · ${cur.model}` : ""}</div>
+                )}
               </div>
             </div>
 
