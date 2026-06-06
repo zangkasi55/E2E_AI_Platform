@@ -380,6 +380,7 @@
 }
 .cm16-block b.pixel { font-size: 8px; color: var(--c-red); }
 .cm16-block small { color: var(--c-dim); }
+.cm16-block-note { color: var(--c-red); font-size: 13px; line-height: 1.3; }
 
 /* ---- pipeline list ------------------------------------------------------ */
 .cm16-steps { display: flex; flex-direction: column; gap: 7px; }

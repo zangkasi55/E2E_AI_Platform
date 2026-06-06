@@ -200,6 +200,8 @@ export function CreditMemo16BitPage() {
 
   const handlePlay = () => {
     if (loading) return;
+    // Purview sensitivity-label gate: a blocked file must never reach the agents.
+    if (run?.policyBlock) return;
     if (run && !player.run) {
       pendingPlay.current = true;
       return;
@@ -218,16 +220,20 @@ export function CreditMemo16BitPage() {
   };
 
   const isHC = file.name === SAMPLE_HC_FILE_NAME;
+  const blocked = !!run?.policyBlock;
   const moStatus = player.nodeStatus(MO_CHAR.id);
   const completed = [MO_CHAR, ...PARTY].filter((c) => player.nodeStatus(c.id) === "done").length;
+  const statusLabel = blocked ? "BLOCKED" : player.status.replace("_", " ").toUpperCase();
+  const statusClass = blocked ? "blocked" : player.status;
 
   // ---- MO speech bubble ----
   let bubble = "Attach a document and start the run.";
   let tone = "";
-  if (player.status === "blocked") {
-    bubble = run?.policyBlock
-      ? `Purview blocked: ${run.policyBlock.label_full_name}. Pick the General file.`
-      : "A policy gate blocked this run.";
+  if (blocked) {
+    bubble = `Purview blocked: ${run!.policyBlock!.label_full_name}. Pick the General file.`;
+    tone = "bad";
+  } else if (player.status === "blocked") {
+    bubble = "A policy gate blocked this run.";
     tone = "bad";
   } else if (player.status === "awaiting_approval") {
     bubble = "Human review needed — approve or reject the draft.";
@@ -400,15 +406,20 @@ export function CreditMemo16BitPage() {
           <div className="cm16-rail">
             {/* ---- run controls ---- */}
             <div className="cm16-box">
-              <h3>🎮 Run Controls<span className={`cm16-badge ${player.status} r`}>{player.status.replace("_", " ").toUpperCase()}</span></h3>
+              <h3>🎮 Run Controls<span className={`cm16-badge ${statusClass} r`}>{statusLabel}</span></h3>
               <div className="pad">
                 <div className="cm16-btnrow">
-                  <button type="button" className="cm16-btn play" onClick={handlePlay} disabled={loading}>
+                  <button type="button" className="cm16-btn play" onClick={handlePlay} disabled={loading || blocked}>
                     {player.status === "playing" ? "❚❚ PAUSE" : "▶ PLAY"}
                   </button>
-                  <button type="button" className="cm16-btn step" onClick={() => player.step()} disabled={loading || !player.run}>⏭ STEP</button>
+                  <button type="button" className="cm16-btn step" onClick={() => player.step()} disabled={loading || !player.run || blocked}>⏭ STEP</button>
                   <button type="button" className="cm16-btn reset" onClick={() => player.reset()} disabled={!player.run}>↺ RESET</button>
                 </div>
+                {blocked && (
+                  <div className="cm16-btnrow mt8">
+                    <span className="cm16-block-note">⛔ Run disabled — Purview blocked this file. Pick the General file to continue.</span>
+                  </div>
+                )}
                 {player.status === "playing" && (
                   <div className="cm16-btnrow mt8">
                     <button type="button" className="cm16-btn ghost" onClick={() => player.pause()}>❚❚ PAUSE</button>
