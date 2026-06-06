@@ -197,10 +197,7 @@ class BankingController:
                 use_case=USE_CASE,
                 detection_source=(
                     "azure_ai_foundry_guardrail"
-                    if (
-                        settings.foundry_guardrail_policy_id
-                        or settings.foundry_guardrail_policy_name
-                    )
+                    if settings.foundry_guardrail_provider
                     else "deterministic_guardrail"
                 ),
                 guardrail_provider=settings.foundry_guardrail_provider,
