@@ -91,7 +91,7 @@ class TokenMeter:
         with self._lock:
             self._records.append(rec)
 
-        if not settings.mock_mode:
+        if settings.live_active:
             self._write_cosmos(rec)
         self._emit_metric(rec)
         return rec
@@ -143,7 +143,7 @@ class TokenMeter:
     def _get_cosmos_container(self):
         if self._cosmos_container is not None:
             return self._cosmos_container
-        if settings.mock_mode:
+        if not settings.live_active:
             return None
         # Lazy import so the module compiles without azure-cosmos installed.
         from azure.cosmos import CosmosClient  # type: ignore

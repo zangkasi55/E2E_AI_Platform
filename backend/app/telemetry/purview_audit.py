@@ -215,7 +215,7 @@ def emit_prompt_risk_event(
 
 def _emit_telemetry(event: dict[str, Any]) -> None:
     """Best-effort OTEL span so events reach App Insights in live mode."""
-    if settings.mock_mode:
+    if not settings.live_active:
         return
     try:  # pragma: no cover - live mode only
         from .otel import start_span
@@ -236,7 +236,7 @@ def _emit_telemetry(event: dict[str, Any]) -> None:
 
 def _emit_prompt_risk_telemetry(event: dict[str, Any]) -> None:
     """Best-effort OTEL span so risky-prompt events reach App Insights live."""
-    if settings.mock_mode:
+    if not settings.live_active:
         return
     try:  # pragma: no cover - live mode only
         from .otel import start_span

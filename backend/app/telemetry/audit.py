@@ -98,8 +98,13 @@ class AuditStore:
         }[logical]
 
     def _upsert(self, logical: str, item: dict, *, pk: str) -> None:
-        """Best-effort Cosmos upsert; no-op in mock mode."""
-        if settings.mock_mode:
+        """Best-effort Cosmos upsert; writes whenever a real run is active.
+
+        Gated on ``live_active`` (real model/agent execution) rather than on
+        ``mock_mode`` so that genuine runs persist to the real Cosmos
+        ``agentaudit`` containers even while synthetic *tools* stay offline.
+        """
+        if not settings.live_active:
             return
         try:
             db = self._get_cosmos_db()
