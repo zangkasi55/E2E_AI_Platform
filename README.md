@@ -6,6 +6,22 @@
 **Target demo date:** 2026-06-19
 **Build tooling:** GitHub Copilot (this repo is structured to be Copilot-friendly — typed code, clear READMEs, inline `TODO:` markers where live Azure wiring is needed)
 
+## Latest update (2026-06-06)
+
+- Fixed live runtime failures in UC1 and UC2 caused by missing synthetic data files in the deployed orchestrator container.
+- Added `backend/data/` to the backend build context and updated the container build to include it (`backend/Dockerfile`: `COPY data ./data`).
+- Aligned backend defaults so runtime resolves data from `/app/data` (`backend/app/config.py`: `data_dir = "data"`).
+- Revalidated end-to-end after deployment: stress run passed (`banking_ok=12`, `credit_ok=8`, `fail=0`), DSPM events were returned, and dependency telemetry confirmed MSI and `invoke_agent` activity.
+
+### How this works
+
+1. CI/CD builds the orchestrator image from the `backend/` folder, not from repo root.
+2. If synthetic files live only under root `data/`, they are outside that build context and are not copied into the image.
+3. At runtime, UC1/UC2 orchestration reads JSON fixtures through the registry layer.
+4. If files are missing in the image, reads fail and API endpoints return HTTP 500.
+5. The fix makes data part of the backend build context and image, and points runtime lookup to the in-image `data/` directory.
+6. Post-fix verification combines API probes, stress replay, container logs, Purview event checks, and Log Analytics dependency queries.
+
 ---
 
 ## What this is

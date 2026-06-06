@@ -12,6 +12,27 @@ stack, the architecture, and how to deploy everything** with either Bicep or
 Terraform. For deeper dives, the linked documents under [`docs/`](.) remain the
 source of truth for each topic.
 
+## Latest implementation update (2026-06-06)
+
+### What changed
+
+- Resolved production HTTP 500 failures in UC1 and UC2 caused by missing runtime fixture files in the deployed orchestrator container.
+- Added runtime synthetic data into backend build context under `backend/data/`.
+- Updated container build to include this folder (`backend/Dockerfile` uses `COPY data ./data`).
+- Updated backend default data path (`backend/app/config.py`) to `data`, which resolves to `/app/data` inside the container.
+
+### Why this issue happened
+
+The deployment pipeline builds from `./backend`. Any files outside that folder (for example root `data/`) are excluded from image build context. Orchestration then tried to load JSON fixture files that were not present in the container filesystem, producing `FileNotFoundError` and endpoint 500s.
+
+### How the fix works end-to-end
+
+1. Data files are now present in backend build context (`backend/data`).
+2. Docker image copy step includes these files at build time.
+3. Runtime path resolution points orchestration to in-image data (`/app/data`).
+4. Registry JSON loaders in UC1 and UC2 can resolve required files deterministically.
+5. Post-deploy validation confirms behavior with probes, stress tests, Purview DSPM events, and dependency telemetry (`/msi/token`, `invoke_agent`).
+
 ---
 
 ## Table of contents

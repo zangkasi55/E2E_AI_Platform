@@ -55,7 +55,11 @@ def _build_agents() -> dict[str, Agent]:
         "financial_ratio": Agent(
             "financial_ratio",
             model="gpt-4o-mini",
-            system_prompt="You interpret computed financial ratios for a credit audience.",
+            system_prompt=(
+                "You interpret computed financial ratios for a credit audience. "
+                "Apply policy gates strictly: DSCR >= 1.25x and net debt/EBITDA <= 4.0x. "
+                "If DSCR < 1.10x, EBITDA <= 0, or leverage exceeds 4.0x, explicitly flag hard reject."
+            ),
             use_case=USE_CASE,
         ),
         "bureau_summary": Agent(
@@ -67,7 +71,11 @@ def _build_agents() -> dict[str, Agent]:
         "memo_assembler": Agent(
             "memo_assembler",
             model="gpt-4o",
-            system_prompt="You assemble section bodies into a coherent draft credit memo.",
+            system_prompt=(
+                "You assemble section bodies into a coherent draft credit memo. "
+                "Do not recommend approval when policy gates fail. "
+                "When hard-risk triggers exist, recommendation must be reject."
+            ),
             use_case=USE_CASE,
         ),
     }
@@ -106,6 +114,7 @@ class MemoOrchestrator:
     def _verify_financials(ratios: dict[str, Any]) -> dict[str, Any]:
         dscr = ratios.get("dscr")
         leverage = ratios.get("net_debt_to_ebitda")
+        ebitda_margin = ratios.get("ebitda_margin_pct")
         checks = [
             {
                 "name": "dscr_meets_threshold",
@@ -114,13 +123,18 @@ class MemoOrchestrator:
             },
             {
                 "name": "leverage_within_threshold",
-                "ok": isinstance(leverage, (int, float)) and leverage <= 3.0,
+                "ok": isinstance(leverage, (int, float)) and leverage <= 4.0,
                 "detail": f"net_debt_to_ebitda={leverage}",
             },
             {
                 "name": "liquidity_positive",
                 "ok": isinstance(ratios.get("current_ratio"), (int, float)) and ratios.get("current_ratio") >= 1.0,
                 "detail": f"current_ratio={ratios.get('current_ratio')}",
+            },
+            {
+                "name": "ebitda_margin_non_negative",
+                "ok": isinstance(ebitda_margin, (int, float)) and ebitda_margin >= 0,
+                "detail": f"ebitda_margin_pct={ebitda_margin}",
             },
         ]
         return {"passed": all(c["ok"] for c in checks), "checks": checks}
@@ -178,7 +192,17 @@ class MemoOrchestrator:
                 else:
                     should_not_approve.append(reason)
 
-        recommendation = "approve" if not should_not_approve else "request_edits"
+        hard_reject_markers = {
+            "dscr_meets_threshold",
+            "leverage_within_threshold",
+            "ebitda_margin_non_negative",
+            "bureau_score_acceptable",
+            "recent_delinquencies_clear",
+        }
+        hard_reject = any(
+            reason.split(":", 1)[0] in hard_reject_markers for reason in should_not_approve
+        )
+        recommendation = "reject" if hard_reject else ("approve" if not should_not_approve else "request_edits")
         return {
             "recommendation": recommendation,
             "should_approve": should_approve,
@@ -452,6 +476,29 @@ class MemoOrchestrator:
         run.approval = decision
         step = len(run.steps)
 
+        guidance = ((run.draft_memo or {}).get("approval_guidance") or {}) if run.draft_memo else {}
+        if decision.approved and guidance.get("recommendation") == "reject":
+            run.status = RunStatus.REFUSED
+            self._trace(
+                run,
+                step,
+                "memo_orchestrator",
+                "hitl_resume",
+                status=StepStatus.BLOCKED,
+                out={
+                    "approved": True,
+                    "reviewer": decision.reviewer,
+                    "policy_override_blocked": True,
+                    "recommendation": "reject",
+                },
+                note=(
+                    "Approval refused by deterministic policy: run contains hard-reject risk markers. "
+                    "Use reject or submit a separate override workflow outside this PoC path."
+                ),
+            )
+            audit_store.save_run(run)
+            return run
+
         if decision.approved:
             final = dict(run.draft_memo or {})
             final["status"] = "final"
@@ -493,7 +540,19 @@ class MemoOrchestrator:
         live mode; here we deterministically synthesize readable bodies."""
         dscr = ratios.get("dscr")
         nde = ratios.get("net_debt_to_ebitda")
-        rec_lean = "supportable subject to standard conditions" if (dscr or 0) >= 1.25 else "requires enhanced collateral / senior override"
+        guidance = self._build_approval_guidance(
+            self._verify_doc_retrieval(retrieval_ctx, has_attachment=bool(request.dr_document)),
+            self._verify_financials(ratios),
+            self._verify_bureau(bureau),
+            {"checks": []},
+        )
+        recommendation = guidance.get("recommendation", "request_edits")
+        if recommendation == "approve":
+            rec_lean = "supportable subject to standard conditions"
+        elif recommendation == "reject":
+            rec_lean = "not approvable on current terms; recommend decline"
+        else:
+            rec_lean = "requires remediation and committee review before any approval"
         return {
             "executive_summary": (
                 f"Draft credit memo for {applicant_id}. Facility requested per loan officer. "

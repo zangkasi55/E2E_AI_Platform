@@ -34,6 +34,12 @@ const TOOL_NAMES = new Set<ToolName>([
   "request_transaction_handoff",
 ]);
 
+function inferApplicantIdFromFileName(fileName?: string): string {
+  if (!fileName) return "APP-1001";
+  const m = fileName.toUpperCase().match(/APP-\d{4}/);
+  return m ? m[0] : "APP-1001";
+}
+
 function mapTraceStep(step: {
   step: number;
   agent: string;
@@ -91,10 +97,11 @@ export const apiBackend: Backend = {
   async getRun(key: RunKey, options?: GetRunOptions): Promise<RunDef> {
     const payload = RUN_KEY_TO_PAYLOAD[key];
     if (payload.use_case === "credit_memo") {
+      const applicantId = inferApplicantIdFromFileName(options?.drDocument?.file_name);
       const run = await http<{ run_id: string; use_case: string; status?: string; policy_block?: Record<string, unknown> | null; steps: unknown[] }>("/api/credit-memo/run", {
         method: "POST",
         body: JSON.stringify({
-          applicant_id: "APP-1001",
+          applicant_id: applicantId,
           template_id: "TMPL-SME-STD-01",
           requested_by: "loan.officer@example.local",
           ...(options?.drDocument ? { dr_document: options.drDocument } : {}),
@@ -108,7 +115,7 @@ export const apiBackend: Backend = {
       return {
         run_id: run.run_id,
         use_case: "credit_memo",
-        applicant: "APP-1001",
+        applicant: applicantId,
         steps: trace.steps.map(mapTraceStep),
         ...(pb
           ? {

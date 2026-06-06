@@ -236,7 +236,7 @@ def calculate_ratios(
     net_debt = max(0.0, total_debt - cash)
 
     dscr = round(ebitda / interest, 2)
-    net_debt_to_ebitda = round(net_debt / ebitda, 2) if ebitda else None
+    net_debt_to_ebitda = round(net_debt / ebitda, 2) if ebitda > 0 else None
     current_ratio = round(
         float(latest.get("current_assets", 0))
         / (float(latest.get("current_liabilities", 0)) or 1.0),

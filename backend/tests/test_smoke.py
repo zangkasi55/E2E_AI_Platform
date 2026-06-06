@@ -10,6 +10,9 @@ import os
 
 # Force mock mode before importing the app modules.
 os.environ["MOCK_MODE"] = "true"
+os.environ["USE_FOUNDRY_AGENTS"] = "false"
+os.environ["LIVE_LLM"] = "false"
+os.environ["DATA_DIR"] = "data"
 
 import pytest  # noqa: E402
 
@@ -109,6 +112,28 @@ def test_credit_memo_pauses_for_hitl_and_finalizes_on_approval():
     assert finalized.status.value == "completed"
     assert finalized.final_memo is not None
     assert finalized.final_memo["status"] == "final"
+
+
+@pytest.mark.parametrize("applicant_id", ["APP-1004", "APP-1005"])
+def test_credit_memo_high_risk_cases_recommend_reject(applicant_id):
+    """Adverse applicants should surface deterministic reject guidance."""
+    run = memo_orchestrator.start(RunRequest(applicant_id=applicant_id, template_id="TMPL-SME-STD-01"))
+    assert run.status.value == "awaiting_approval"
+    assert run.draft_memo is not None
+    guidance = run.draft_memo.get("approval_guidance") or {}
+    assert guidance.get("recommendation") == "reject"
+    assert guidance.get("should_not_approve")
+
+
+def test_credit_memo_reject_guidance_blocks_forced_approval():
+    """If guidance is reject, an approve action is refused by deterministic policy."""
+    run = memo_orchestrator.start(RunRequest(applicant_id="APP-1005", template_id="TMPL-SME-STD-01"))
+    resumed = memo_orchestrator.approve(
+        run.run_id,
+        ApprovalDecision(approved=True, reviewer="credit.officer@example.local", comment="force approve"),
+    )
+    assert resumed.status.value == "refused"
+    assert resumed.final_memo is None
 
 
 def test_credit_memo_dr_attachment_metadata_flows_to_first_retrieval_trace():

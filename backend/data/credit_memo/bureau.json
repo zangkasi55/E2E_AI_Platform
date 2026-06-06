@@ -39,27 +39,27 @@
     },
     "APP-1004": {
       "bureau": "NCB-SYNTHETIC",
-      "pulled_date": "2026-05-28",
-      "score": 715,
-      "score_band": "A (Low Risk)",
-      "total_outstanding_thb": 85000000,
-      "active_accounts": 5,
-      "delinquencies_12m": 0,
-      "worst_status_36m": "Current",
-      "inquiries_6m": 1,
-      "notes": "Asset-backed fleet loans performing. Stable utilisation. No adverse marks."
+      "pulled_date": "2026-05-31",
+      "score": 648,
+      "score_band": "C (Elevated Risk)",
+      "total_outstanding_thb": 95000000,
+      "active_accounts": 7,
+      "delinquencies_12m": 1,
+      "worst_status_36m": "30 DPD",
+      "inquiries_6m": 5,
+      "notes": "One cured delinquency; high revolving utilisation (~88%)."
     },
     "APP-1005": {
       "bureau": "NCB-SYNTHETIC",
-      "pulled_date": "2026-05-28",
-      "score": 698,
-      "score_band": "B (Moderate Risk)",
-      "total_outstanding_thb": 59000000,
-      "active_accounts": 7,
-      "delinquencies_12m": 0,
-      "worst_status_36m": "Current",
-      "inquiries_6m": 4,
-      "notes": "Stable agro-processor. Thin equity cushion but consistent servicing. Multiple short-term seasonal lines."
+      "pulled_date": "2026-06-01",
+      "score": 540,
+      "score_band": "D (High Risk)",
+      "total_outstanding_thb": 110000000,
+      "active_accounts": 9,
+      "delinquencies_12m": 3,
+      "worst_status_36m": "90+ DPD; one restructured account",
+      "inquiries_6m": 7,
+      "notes": "Adverse history. Restructured facility and active arrears at filing date."
     }
   }
 }
