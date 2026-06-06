@@ -176,6 +176,27 @@ button {
   color: var(--muted);
   margin: 0 0 10px;
 }
+/* DSPM panel header row: title + manual refresh button */
+.dspm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dspm-head h2 { margin: 0; }
+.dspm-head .rail-h { margin: 0; }
+.btn.ghost {
+  border-color: var(--line);
+  background: #f7faff;
+  color: var(--muted);
+}
+.btn.ghost:hover { border-color: #c6d3e6; background: #eef3fb; color: var(--ink); }
+.dspm-refresh {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
 
 /* ---- Run controls ------------------------------------------------------- */
 .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

@@ -6,7 +6,7 @@
 // Banking right rails (compact list). When `events` is not supplied the panel
 // self-fetches from the backend and polls every 15s.
 // =============================================================================
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { backend } from "../lib";
 import type { DspmEvent } from "../lib/dspmEvents";
@@ -54,30 +54,51 @@ interface DspmEventsPanelProps {
 
 export function DspmEventsPanel({ events: provided, compact = false, limit = 50 }: DspmEventsPanelProps) {
   const [fetched, setFetched] = useState<DspmEvent[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const selfFetch = provided === undefined;
+  const liveRef = useRef(true);
+
+  const load = useCallback(async () => {
+    if (!selfFetch) return;
+    setRefreshing(true);
+    try {
+      const evs = await backend.getDspmEvents(limit);
+      if (liveRef.current) setFetched(evs);
+    } finally {
+      if (liveRef.current) setRefreshing(false);
+    }
+  }, [selfFetch, limit]);
 
   useEffect(() => {
     if (!selfFetch) return;
-    let live = true;
-    const load = () => {
-      backend.getDspmEvents(limit).then((evs) => {
-        if (live) setFetched(evs);
-      });
-    };
+    liveRef.current = true;
     load();
     const id = window.setInterval(load, 15000);
     return () => {
-      live = false;
+      liveRef.current = false;
       window.clearInterval(id);
     };
-  }, [selfFetch, limit]);
+  }, [selfFetch, load]);
 
   const events = provided ?? fetched;
 
   if (compact) {
     return (
       <div className="panel">
-        <div className="rail-h">DSPM for AI · security events</div>
+        <div className="dspm-head">
+          <div className="rail-h">DSPM for AI · security events</div>
+          {selfFetch ? (
+            <button
+              type="button"
+              className="btn ghost dspm-refresh"
+              onClick={() => load()}
+              disabled={refreshing}
+              title="Refresh DSPM events now"
+            >
+              {refreshing ? "⟳ Refreshing…" : "⟳ Refresh"}
+            </button>
+          ) : null}
+        </div>
         <p className="sub sub-tight-top">
           Live Microsoft Purview DSPM-for-AI log: document label/DLP scans and risky-prompt guardrail blocks.
         </p>
@@ -108,7 +129,20 @@ export function DspmEventsPanel({ events: provided, compact = false, limit = 50 
 
   return (
     <div className="panel">
-      <h2>DSPM for AI · data security events</h2>
+      <div className="dspm-head">
+        <h2>DSPM for AI · data security events</h2>
+        {selfFetch ? (
+          <button
+            type="button"
+            className="btn ghost dspm-refresh"
+            onClick={() => load()}
+            disabled={refreshing}
+            title="Refresh DSPM events now"
+          >
+            {refreshing ? "⟳ Refreshing…" : "⟳ Refresh"}
+          </button>
+        ) : null}
+      </div>
       <p className="sub">
         Microsoft Purview DSPM for AI activity log (latest 10 events · scroll for more). Captures
         sensitivity-label scans and DLP blocks from the credit-memo upload gate, plus{" "}
