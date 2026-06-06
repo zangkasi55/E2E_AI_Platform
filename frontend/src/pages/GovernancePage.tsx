@@ -21,14 +21,17 @@ function PolicyCard({
   title: string;
   policy: GovernancePayload["data_policy"] | GovernancePayload["security_policy"];
 }) {
+  const scope = Array.isArray(policy.scope) ? policy.scope : [];
+  const controls = Array.isArray(policy.controls) ? policy.controls : [];
+
   return (
     <div className="panel">
       <h2>{title}</h2>
       <p className="sub">
-        {policy.name} · {policy.platform}
+        {(policy.name || "Unnamed policy")} · {(policy.platform || "unknown platform")}
       </p>
-      <p className="sub">Owner: {policy.owner}</p>
-      <p className="sub">Scope: {policy.scope.join(", ")}</p>
+      <p className="sub">Owner: {policy.owner || "unassigned"}</p>
+      <p className="sub">Scope: {scope.length > 0 ? scope.join(", ") : "not specified"}</p>
       <table className="table">
         <thead>
           <tr>
@@ -39,7 +42,7 @@ function PolicyCard({
           </tr>
         </thead>
         <tbody>
-          {policy.controls.map((control) => (
+          {controls.map((control) => (
             <tr key={control.id}>
               <td>{control.id}</td>
               <td>{control.title}</td>
@@ -47,6 +50,11 @@ function PolicyCard({
               <td>{control.purview_capability ?? control.entra_capability ?? "-"}</td>
             </tr>
           ))}
+          {controls.length === 0 ? (
+            <tr>
+              <td colSpan={4}>No controls reported by backend.</td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
     </div>
@@ -122,7 +130,7 @@ export function GovernancePage() {
             <div className="panel">
               <h2>Live wiring status</h2>
               <p className="sub">
-                {configured}/{total} components configured · guardrail policy {data.guardrail_policy.configured ? "active" : "not configured"}.
+                {configured}/{total} components configured · guardrail policy {data.guardrail_policy?.configured ? "active" : "not configured"}.
               </p>
               <div className="statuschips">
                 {data.component_wiring.map((entry) => (
@@ -134,9 +142,9 @@ export function GovernancePage() {
                     {entry.component}
                   </span>
                 ))}
-                <span className={`expect-pill ${data.guardrail_policy.configured ? "demonstrated" : "unavailable"}`}>
-                  {data.guardrail_policy.configured ? "● " : "○ "}
-                  {data.guardrail_policy.provider} guardrail · {data.guardrail_policy.mode}
+                <span className={`expect-pill ${data.guardrail_policy?.configured ? "demonstrated" : "unavailable"}`}>
+                  {data.guardrail_policy?.configured ? "● " : "○ "}
+                  {(data.guardrail_policy?.provider || "Guardrail")} · {(data.guardrail_policy?.mode || "unknown")}
                 </span>
               </div>
             </div>
