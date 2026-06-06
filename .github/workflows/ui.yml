@@ -48,6 +48,8 @@ jobs:
         env:
           # Orchestrator Container App URL (from infra outputs.orchestratorFqdn).
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          # Ensure deployed UI calls the real backend, not canned mock data.
+          VITE_USE_MOCK: 'false'
         run: |
           npm ci
           npm run build

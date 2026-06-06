@@ -319,6 +319,7 @@ jobs:
         working-directory: ${{ env.UI_DIR }}
         env:
           VITE_API_BASE_URL: ${{ needs.terraform.outputs.orchestrator_fqdn }}
+          VITE_USE_MOCK: 'false'
         run: |
           npm ci
           npm run build
