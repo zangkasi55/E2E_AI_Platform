@@ -47,7 +47,7 @@ const SAMPLE_CONTENT: Record<string, string> = {
 
 export function CreditMemoPage() {
   const [run, setRun] = useState<RunDef | null>(null);
-  const [attachedFile, setAttachedFile] = useState<File | null>(DEFAULT_DR_FILE);
+  const [attachedFile, setAttachedFile] = useState<File>(DEFAULT_DR_FILE);
   const [dragActive, setDragActive] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<string | null>(null);
@@ -57,7 +57,7 @@ export function CreditMemoPage() {
   // Monotonic request id so stale run responses cannot overwrite newer intent.
   const runLoadSeq = useRef(0);
 
-  const sampleContent = attachedFile ? SAMPLE_CONTENT[attachedFile.name] : undefined;
+  const sampleContent = SAMPLE_CONTENT[attachedFile.name];
   const isSampleDoc = sampleContent !== undefined;
 
   // Swap the attached file to one of the two pre-built test documents. Resets the
@@ -112,10 +112,6 @@ export function CreditMemoPage() {
   };
 
   const fetchRun = () => {
-    if (!attachedFile) {
-      setRun(null);
-      return Promise.resolve<RunDef | null>(null);
-    }
     const seq = ++runLoadSeq.current;
     return backend
       .getRun("credit_memo", {
@@ -158,7 +154,11 @@ export function CreditMemoPage() {
   }, [run?.run_id, player.run?.run_id, player.status]);
 
   const handlePlay = () => {
-    if (!attachedFile) return;
+    // If run is present but reducer state has not consumed it yet, queue play.
+    if (run && !player.run) {
+      pendingPlay.current = true;
+      return;
+    }
     if (!run) {
       pendingPlay.current = true;
       setAttachError(null);
@@ -207,7 +207,7 @@ export function CreditMemoPage() {
                 onPause={player.pause}
                 onStep={player.step}
                 onReset={player.reset}
-                disabled={!attachedFile || !!run?.policyBlock}
+                disabled={!!run?.policyBlock}
                 allowReplayTerminal
               />
               <p className="sub" style={{ marginTop: 10, marginBottom: 0 }}>
@@ -282,7 +282,7 @@ export function CreditMemoPage() {
                   </p>
                 </div>
               ) : null}
-              {attachedFile && (isSampleDoc || attachedFile.type === "text/plain") ? (
+              {isSampleDoc || attachedFile.type === "text/plain" ? (
                 <div className="dr-preview-controls">
                   <button type="button" className="btn ghost" onClick={togglePreview}>
                     {showPreview ? "Hide document" : "View sample document"}
