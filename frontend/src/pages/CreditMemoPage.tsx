@@ -54,6 +54,8 @@ export function CreditMemoPage() {
   const [showPreview, setShowPreview] = useState(false);
   // Set when Play should begin once a freshly fetched run is loaded.
   const pendingPlay = useRef(false);
+  // Monotonic request id so stale run responses cannot overwrite newer intent.
+  const runLoadSeq = useRef(0);
 
   const sampleContent = attachedFile ? SAMPLE_CONTENT[attachedFile.name] : undefined;
   const isSampleDoc = sampleContent !== undefined;
@@ -109,13 +111,13 @@ export function CreditMemoPage() {
     setShowPreview(true);
   };
 
-  useEffect(() => {
+  const fetchRun = () => {
     if (!attachedFile) {
       setRun(null);
-      return;
+      return Promise.resolve<RunDef | null>(null);
     }
-    let live = true;
-    backend
+    const seq = ++runLoadSeq.current;
+    return backend
       .getRun("credit_memo", {
         drDocument: {
           file_name: attachedFile.name,
@@ -126,17 +128,21 @@ export function CreditMemoPage() {
         },
       })
       .then((r) => {
-        if (!live) return;
+        if (seq !== runLoadSeq.current) return null;
         setAttachError(null);
         setRun(r);
+        return r;
       })
       .catch(() => {
-        if (!live) return;
+        if (seq !== runLoadSeq.current) return null;
         setRun(null);
+        return null;
       });
-    return () => {
-      live = false;
-    };
+  };
+
+  useEffect(() => {
+    void fetchRun();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachedFile]);
 
   const player = useRunPlayer(run);
@@ -156,19 +162,12 @@ export function CreditMemoPage() {
     if (!run) {
       pendingPlay.current = true;
       setAttachError(null);
-      backend
-        .getRun("credit_memo", {
-          drDocument: {
-            file_name: attachedFile.name,
-            size_bytes: attachedFile.size,
-            mime_type: attachedFile.type || undefined,
-            last_modified_epoch_ms: attachedFile.lastModified,
-            uploaded_at: new Date().toISOString(),
-          },
-        })
+      void fetchRun()
         .then((r) => {
-          setAttachError(null);
-          setRun(r);
+          if (!r) {
+            pendingPlay.current = false;
+            setAttachError("Run preload failed. Please try again.");
+          }
         })
         .catch(() => {
           pendingPlay.current = false;
