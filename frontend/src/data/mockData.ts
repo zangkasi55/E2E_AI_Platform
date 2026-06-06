@@ -139,7 +139,7 @@ const UC1_STEPS: Step[] = [
     title: "HITL pause — awaiting human approval",
     tool: null, apim: false,
     detail: "Durable Functions suspends the workflow and routes the draft to a human reviewer in Teams. Agent drafts, human decides.",
-    result: "Workflow PAUSED. Reviewer can Approve or Request edits. No memo is final without approval.",
+    result: "Workflow PAUSED. Reviewer can Approve or Reject. No memo is final without approval.",
     params: {
       approval_guidance: {
         recommendation: "approve",
@@ -325,7 +325,7 @@ function buildTokens(): TokenRecord[] {
       ["intent_decomposition", "gpt-4o", 940, 210], ["slot_filling", "gpt-4o-mini", 720, 150],
       ["conditional_eval", "gpt-4o-mini", 520, 85], ["handoff", "gpt-4o", 840, 240],
     ]],
-    ["run-3098-credit-memo", "credit_memo", "2026-06-03T11:05:00Z", [
+    ["run-9930-credit-memo", "credit_memo", "2026-06-05T08:10:00Z", [
       ["memo_orchestrator", "gpt-4o", 1210, 250], ["doc_retrieval", "gpt-4o-mini", 2300, 370],
       ["financial_ratio", "gpt-4o", 3120, 540], ["bureau_summary", "gpt-4o-mini", 2010, 420],
       ["memo_assembler", "gpt-4o", 4250, 1010],

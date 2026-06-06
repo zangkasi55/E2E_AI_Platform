@@ -13,7 +13,7 @@ the request body only needs the user ``input``. Multi-turn is supported via the
 returned ``conversation``/``previous_response_id`` but the orchestrator issues
 single-shot calls today.
 
-Auth: ``DefaultAzureCredential`` with the data-plane scope
+Auth: shared ``get_credential()`` (managed identity / local dev fallback) with the data-plane scope
 ``https://ai.azure.com/.default`` (same as the provisioning script). The caller
 (the orchestrator UAMI) needs the *Azure AI User* role on the project.
 
@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from ..config import settings
+from ..identity import get_credential
 
 API_VERSION = "v1"
 TOKEN_SCOPE = "https://ai.azure.com/.default"
@@ -59,11 +60,7 @@ def split_agent_id(agent_id: str) -> tuple[str, Optional[str]]:
 def _get_token() -> str:
     global _credential
     if _credential is None:
-        from azure.identity import DefaultAzureCredential  # type: ignore
-
-        _credential = DefaultAzureCredential(
-            managed_identity_client_id=settings.entra_orchestrator_client_id or None
-        )
+        _credential = get_credential()
     return _credential.get_token(TOKEN_SCOPE).token
 
 

@@ -261,10 +261,12 @@ export function CreditMemoPage() {
 
             <HITLApprovalBar
               active={player.status === "awaiting_approval"}
-              resolved={player.approved && player.status === "done"}
+              resolved={!!player.hitlDecision && (player.status === "done" || player.status === "blocked")}
+              decision={player.hitlDecision}
+              reason={player.hitlReason}
               guidance={approvalGuidance}
               onApprove={player.approve}
-              onRequestEdits={player.reset}
+              onReject={player.reject}
             />
           </div>
 

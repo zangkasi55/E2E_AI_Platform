@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from .config import settings
 from .governance.policies import governance_payload
+from .identity import validate_foundry_agent_id_coverage
 from .models import (
     ApprovalDecision,
     BankingMessage,
@@ -54,6 +55,13 @@ app.add_middleware(
 def _startup() -> None:
     # No-op in MOCK_MODE; wires Azure Monitor in live mode.
     configure_telemetry()
+    if settings.use_foundry_agents and settings.foundry_project_endpoint:
+        missing = validate_foundry_agent_id_coverage()
+        if missing:
+            raise RuntimeError(
+                "Foundry AgentID wiring is incomplete. Missing mappings for: "
+                + ", ".join(missing)
+            )
 
 
 # ---------------------------------------------------------------------------

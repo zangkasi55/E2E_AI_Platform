@@ -165,3 +165,24 @@ variable "static_web_app_location" {
   type        = string
   default     = "eastasia"
 }
+
+# ---------------------------------------------------------------------------
+# Foundry live stack (separate RG in swedencentral)
+# ---------------------------------------------------------------------------
+variable "foundry_resource_group_name" {
+  description = "Resource group for the live Foundry stack."
+  type        = string
+  default     = "rg-agentic-poc-swc"
+}
+
+variable "foundry_location" {
+  description = "Region for the Foundry stack and gpt-4o quota."
+  type        = string
+  default     = "swedencentral"
+}
+
+variable "foundry_project_name" {
+  description = "Data-plane Foundry project name."
+  type        = string
+  default     = "SCBXAIplatformPOC"
+}

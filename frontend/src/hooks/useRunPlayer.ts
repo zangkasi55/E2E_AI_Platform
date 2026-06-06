@@ -40,6 +40,8 @@ interface PlayerState {
   handoff?: HandoffObject;
   blocked: boolean;
   approved: boolean;
+  hitlDecision: "approved" | "rejected" | null;
+  hitlReason: string;
 }
 
 type Action =
@@ -48,7 +50,8 @@ type Action =
   | { type: "play" }
   | { type: "pause" }
   | { type: "reset" }
-  | { type: "approve" };
+  | { type: "approve"; reason?: string }
+  | { type: "reject"; reason: string };
 
 const EMPTY_TOTALS: TokenTotals = { prompt: 0, completion: 0, total: 0, cost: 0 };
 
@@ -63,6 +66,8 @@ function initialState(run: RunDef | null): PlayerState {
     handoff: undefined,
     blocked: false,
     approved: false,
+    hitlDecision: null,
+    hitlReason: "",
   };
 }
 
@@ -148,7 +153,48 @@ function reducer(state: PlayerState, action: Action): PlayerState {
 
     case "approve": {
       if (state.status !== "awaiting_approval") return state;
-      return { ...state, approved: true, status: "playing" };
+      const reason = (action.reason ?? "").trim();
+      const audit = [
+        ...state.audit,
+        {
+          step: state.index >= 0 && state.run?.steps[state.index] ? state.run.steps[state.index].step : 0,
+          kind: "hitl" as const,
+          text: reason
+            ? `HITL decision=APPROVE · reviewer_note=${reason}`
+            : "HITL decision=APPROVE",
+        },
+      ];
+      return {
+        ...state,
+        approved: true,
+        status: "playing",
+        hitlDecision: "approved",
+        hitlReason: reason,
+        audit,
+      };
+    }
+
+    case "reject": {
+      if (state.status !== "awaiting_approval") return state;
+      const reason = action.reason.trim();
+      if (!reason) return state;
+      const audit = [
+        ...state.audit,
+        {
+          step: state.index >= 0 && state.run?.steps[state.index] ? state.run.steps[state.index].step : 0,
+          kind: "hitl" as const,
+          text: `HITL decision=REJECT · reviewer_reason=${reason}`,
+        },
+      ];
+      return {
+        ...state,
+        approved: false,
+        blocked: true,
+        status: "blocked",
+        hitlDecision: "rejected",
+        hitlReason: reason,
+        audit,
+      };
     }
 
     default:
@@ -168,13 +214,16 @@ export interface RunPlayer {
   handoff?: HandoffObject;
   blocked: boolean;
   approved: boolean;
+  hitlDecision: "approved" | "rejected" | null;
+  hitlReason: string;
   /** agentId/stage → status, for pure flow-graph rendering. */
   nodeStatus: (nodeId: string) => AgentStatus;
   play(): void;
   pause(): void;
   step(): void;
   reset(): void;
-  approve(): void;
+  approve(reason?: string): void;
+  reject(reason: string): void;
 }
 
 /**
@@ -220,7 +269,8 @@ export function useRunPlayer(run: RunDef | null): RunPlayer {
   const pause = useCallback(() => dispatch({ type: "pause" }), []);
   const step = useCallback(() => dispatch({ type: "advance" }), []);
   const reset = useCallback(() => dispatch({ type: "reset" }), []);
-  const approve = useCallback(() => dispatch({ type: "approve" }), []);
+  const approve = useCallback((reason?: string) => dispatch({ type: "approve", reason }), []);
+  const reject = useCallback((reason: string) => dispatch({ type: "reject", reason }), []);
 
   const steps = state.run?.steps ?? [];
   const current = state.index >= 0 && state.index < steps.length ? steps[state.index] : null;
@@ -266,13 +316,16 @@ export function useRunPlayer(run: RunDef | null): RunPlayer {
       handoff: state.handoff,
       blocked: state.blocked,
       approved: state.approved,
+      hitlDecision: state.hitlDecision,
+      hitlReason: state.hitlReason,
       nodeStatus,
       play,
       pause,
       step,
       reset,
       approve,
+      reject,
     }),
-    [state, current, steps, nodeStatus, play, pause, step, reset, approve],
+    [state, current, steps, nodeStatus, play, pause, step, reset, approve, reject],
   );
 }

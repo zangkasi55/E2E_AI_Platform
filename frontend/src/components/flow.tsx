@@ -101,7 +101,7 @@ export function AgentFlowGraph({
         <AgentNode
           id="hitl"
           label="Human review gate"
-          role="HITL · reviewer approves or requests edits"
+          role="HITL · reviewer approves or rejects with reason"
           status={nodeStatus("hitl")}
           variant="hitl"
         />

@@ -3,6 +3,7 @@
 // RunControls, ToolCallCard, HITLApprovalBar, AuditTrailPanel, TokenCounter.
 // =============================================================================
 import type { ModelId, RunStatus, Step, ToolName } from "../types";
+import { useState } from "react";
 import { TOOLS } from "../data/mockData";
 import { AnimatedNumber, Badge, JsonBlock } from "./primitives";
 import type { AuditEntry } from "../hooks/useRunPlayer";
@@ -101,28 +102,45 @@ export function ToolCallCard({ step }: { step: Step | null }) {
 export function HITLApprovalBar({
   active,
   resolved,
+  decision,
+  reason,
   guidance,
   onApprove,
-  onRequestEdits,
+  onReject,
 }: {
   active: boolean;
   resolved: boolean;
+  decision?: "approved" | "rejected" | null;
+  reason?: string;
   guidance?: {
     recommendation?: string;
     should_approve?: string[];
     should_not_approve?: string[];
   };
-  onApprove(): void;
-  onRequestEdits(): void;
+  onApprove(reason?: string): void;
+  onReject(reason: string): void;
 }) {
-  if (!active && !resolved) return null;
-  if (resolved) {
+  const [note, setNote] = useState("");
+  const [rejectError, setRejectError] = useState<string | null>(null);
+
+  if (!active && !resolved && !decision) return null;
+  if (resolved || decision) {
+    const approved = decision === "approved";
     return (
-      <div className="hitlbar resolved">
+      <div className={`hitlbar resolved ${approved ? "approved" : "rejected"}`}>
         <h3>
-          <span aria-hidden>✓</span> Approved by reviewer
+          <span aria-hidden>{approved ? "✓" : "✕"}</span> {approved ? "Approved by reviewer" : "Rejected by reviewer"}
         </h3>
-        <p>Durable Functions resumed. The final memo is committed with a full audit trail.</p>
+        <p>
+          {approved
+            ? "Durable Functions resumed. The final memo is committed with a full audit trail."
+            : "The workflow was rejected by human review and moved to a terminal blocked state."}
+        </p>
+        {reason ? (
+          <p className="hitl-note-summary">
+            <strong>Reviewer note:</strong> {reason}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -146,17 +164,42 @@ export function HITLApprovalBar({
           ) : null}
           {guidance.should_not_approve?.length ? (
             <div>
-              <strong>Reasons to request edits:</strong> {guidance.should_not_approve.join("; ")}
+              <strong>Reasons to reject:</strong> {guidance.should_not_approve.join("; ")}
             </div>
           ) : null}
         </div>
       ) : null}
+      <div className="hitl-note-wrap">
+        <label htmlFor="hitl-reviewer-note">Reviewer note (required for reject; optional for approve)</label>
+        <textarea
+          id="hitl-reviewer-note"
+          className="hitl-note"
+          value={note}
+          onChange={(e) => {
+            setNote(e.target.value);
+            if (rejectError) setRejectError(null);
+          }}
+          rows={3}
+          placeholder="Enter the human reviewer reason or note..."
+        />
+        {rejectError ? <div className="hitl-note-error">{rejectError}</div> : null}
+      </div>
       <div className="acts">
-        <button className="btn ok" onClick={onApprove}>
+        <button className="btn ok" onClick={() => onApprove(note.trim())}>
           ✓ Approve &amp; finalize
         </button>
-        <button className="btn warn" onClick={onRequestEdits}>
-          ✎ Request edits
+        <button
+          className="btn warn"
+          onClick={() => {
+            const trimmed = note.trim();
+            if (!trimmed) {
+              setRejectError("Please provide a rejection reason.");
+              return;
+            }
+            onReject(trimmed);
+          }}
+        >
+          ✕ Reject
         </button>
       </div>
     </div>

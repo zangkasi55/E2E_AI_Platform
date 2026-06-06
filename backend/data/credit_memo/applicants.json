@@ -1,0 +1,70 @@
+{
+  "_comment": "SYNTHETIC test data — clearly fake SME loan applicants. Amounts in Thai baht (THB). For Agentic AI Platform PoC (UC1 Credit Memo Drafting Agent).",
+  "applicants": [
+    {
+      "applicant_id": "APP-1001",
+      "company_name": "Siam Lotus Foods Co., Ltd.",
+      "registration_no": "0105560000011",
+      "sector": "Food & Beverage Manufacturing",
+      "province": "Samut Sakhon",
+      "established_year": 2014,
+      "employees": 85,
+      "requested_amount_thb": 12000000,
+      "loan_purpose": "Working capital + cold-storage expansion",
+      "tenor_months": 60,
+      "relationship_manager": "Anchalee P."
+    },
+    {
+      "applicant_id": "APP-1002",
+      "company_name": "Bangkok Greentech Solar Co., Ltd.",
+      "registration_no": "0105561000022",
+      "sector": "Renewable Energy / EPC",
+      "province": "Bangkok",
+      "established_year": 2017,
+      "employees": 42,
+      "requested_amount_thb": 25000000,
+      "loan_purpose": "Project financing for 3MW rooftop solar portfolio",
+      "tenor_months": 84,
+      "relationship_manager": "Krit S."
+    },
+    {
+      "applicant_id": "APP-1003",
+      "company_name": "Chiang Mai Crafted Textiles Ltd., Part.",
+      "registration_no": "0503560000033",
+      "sector": "Textiles & Apparel",
+      "province": "Chiang Mai",
+      "established_year": 2011,
+      "employees": 120,
+      "requested_amount_thb": 8000000,
+      "loan_purpose": "Inventory financing for export season",
+      "tenor_months": 36,
+      "relationship_manager": "Wirote T."
+    },
+    {
+      "applicant_id": "APP-1004",
+      "company_name": "Andaman Logistics & Cold Chain Co., Ltd.",
+      "registration_no": "0835560000044",
+      "sector": "Logistics & Warehousing",
+      "province": "Phuket",
+      "established_year": 2015,
+      "employees": 68,
+      "requested_amount_thb": 18000000,
+      "loan_purpose": "Fleet expansion (12 refrigerated trucks)",
+      "tenor_months": 60,
+      "relationship_manager": "Nattaya R."
+    },
+    {
+      "applicant_id": "APP-1005",
+      "company_name": "Isan Agro Processing Co., Ltd.",
+      "registration_no": "0345560000055",
+      "sector": "Agriculture / Rice Milling",
+      "province": "Khon Kaen",
+      "established_year": 2009,
+      "employees": 150,
+      "requested_amount_thb": 15000000,
+      "loan_purpose": "Upgrade milling line + grain silos",
+      "tenor_months": 72,
+      "relationship_manager": "Somchai L."
+    }
+  ]
+}

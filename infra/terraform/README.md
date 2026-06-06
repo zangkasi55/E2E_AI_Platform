@@ -29,6 +29,7 @@ Terraform — they target the same resource group and produce the same topology.
 | `purview.tf` | New **or** existing Purview account + Storage Blob Data Reader grant |
 | `defender.tf` | Defender for Cloud plans (CSPM, Key Vault, Storage V2, AI) at subscription scope |
 | `staticwebapp.tf` | Static Web App for the React SPA (optional) |
+| `foundry.tf` | Live AI Foundry stack in `swedencentral` (project, models, telemetry, audit store, secrets, identity) |
 
 Variable defaults mirror [`infra/main.bicepparam`](../main.bicepparam).
 
@@ -43,6 +44,7 @@ Variable defaults mirror [`infra/main.bicepparam`](../main.bicepparam).
   User Access Administrator) — the config creates RBAC role assignments and
   subscription-scoped Defender plans.
 - Quota for Azure OpenAI gpt-4o in the chosen region.
+- Quota for gpt-4o in `swedencentral` for the Foundry stack.
 
 ---
 
@@ -82,6 +84,9 @@ terraform output -raw application_insights_connection_string
    placeholders. The `value` is `ignore_changes`d so real secrets survive applies.
 3. **Deploy the tool/durable Function code** (`.github/workflows/functions.yml`).
 4. **Deploy the SPA** to the Static Web App (`.github/workflows/ui.yml`).
+5. **Provision Foundry agents** by running `backend/scripts/provision_foundry_agents.py`
+  after Terraform finishes. The script reads the `foundry_project_endpoint`
+  output and writes `backend/app/foundry_agent_ids.json`.
 
 ---
 
@@ -90,6 +95,9 @@ terraform output -raw application_insights_connection_string
 - **Purview**: Azure allows one Purview account per tenant, so the default
   (`use_existing_purview = true`) references `pview-isaru66-default-001`. Set it
   to `false` to create `agpoc-purview-dev` instead.
+- **Foundry**: the `foundry.tf` stack lives in a separate resource group in
+  `swedencentral` and is the source of truth for the live prompt agents used by
+  `USE_FOUNDRY_AGENTS=true`.
 - **Cosmos data-plane RBAC**: document read/write uses
   `azurerm_cosmosdb_sql_role_assignment` (Cosmos built-in *Data Contributor*),
   which is distinct from Azure RBAC `azurerm_role_assignment`.

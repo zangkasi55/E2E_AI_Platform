@@ -1,0 +1,333 @@
+# =============================================================================
+# platform.yml — Terraform-first end-to-end deployment for the Agentic AI
+# Platform PoC.
+#
+# What it does:
+#   1) bootstraps remote Terraform state in Azure Storage
+#   2) applies infra/terraform (platform RG + Foundry RG)
+#   3) provisions the live Foundry agents/workflows
+#   4) deploys the backend orchestrator image (with the generated agent IDs)
+#   5) publishes the Function Apps
+#   6) builds and deploys the React frontend to Static Web Apps
+#
+# Auth: federated OIDC (azure/login@v2). No long-lived Azure secrets.
+# =============================================================================
+name: platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      provision_foundry_agents:
+        description: "Provision the Foundry agents after Terraform applies"
+        type: boolean
+        default: true
+      deploy_backend:
+        description: "Build + deploy the orchestrator container"
+        type: boolean
+        default: true
+      deploy_functions:
+        description: "Publish the Function Apps"
+        type: boolean
+        default: true
+      deploy_frontend:
+        description: "Build + deploy the frontend"
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - 'infra/terraform/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/platform.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/terraform/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/platform.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_LOCATION: southeastasia
+  TF_DIR: infra/terraform
+  TF_STATE_RG: rg-tfstate-agpoc
+  TF_STATE_CONTAINER: tfstate
+  TF_STATE_KEY: agentic-ai-platform.tfstate
+  TF_STATE_STORAGE_PREFIX: sttfstateagpoc
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  BACKEND_IMAGE_NAME: orchestrator
+  RESOURCE_GROUP: rg-agentic-poc-sea
+  ACA_APP: agpoc-aca-orch-dev
+  TOOLS_APP: agpoc-func-tools-dev
+  DURABLE_APP: agpoc-func-durable-dev
+  UI_DIR: frontend
+
+jobs:
+  terraform:
+    name: Terraform apply
+    runs-on: ubuntu-latest
+    environment: dev
+    outputs:
+      foundry_project_endpoint: ${{ steps.tf-output.outputs.foundry_project_endpoint }}
+      orchestrator_fqdn: ${{ steps.tf-output.outputs.orchestrator_fqdn }}
+      tools_function_hostname: ${{ steps.tf-output.outputs.tools_function_hostname }}
+      static_web_app_hostname: ${{ steps.tf-output.outputs.static_web_app_hostname }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bootstrap Terraform remote state
+        shell: bash
+        run: |
+          set -euo pipefail
+          state_sa="${TF_STATE_STORAGE_PREFIX}"
+          suffix="${AZURE_SUBSCRIPTION_ID//-/}"
+          state_sa="${state_sa}${suffix:0:8}"
+          state_sa="${state_sa:0:24}"
+          echo "STATE_STORAGE_ACCOUNT=${state_sa}" >> "$GITHUB_ENV"
+          az group create --name "${TF_STATE_RG}" --location "${AZURE_LOCATION}" 1>/dev/null
+          if ! az storage account show --name "${state_sa}" --resource-group "${TF_STATE_RG}" 1>/dev/null 2>&1; then
+            az storage account create \
+              --name "${state_sa}" \
+              --resource-group "${TF_STATE_RG}" \
+              --location "${AZURE_LOCATION}" \
+              --sku Standard_LRS \
+              --kind StorageV2 \
+              --https-only true \
+              --min-tls-version TLS1_2 1>/dev/null
+          fi
+          storage_key=$(az storage account keys list \
+            --account-name "${state_sa}" \
+            --resource-group "${TF_STATE_RG}" \
+            --query '[0].value' -o tsv)
+          az storage container create \
+            --name "${TF_STATE_CONTAINER}" \
+            --account-name "${state_sa}" \
+            --account-key "${storage_key}" 1>/dev/null
+          echo "STATE_STORAGE_KEY=${storage_key}" >> "$GITHUB_ENV"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+
+      - name: Terraform fmt + init + validate + plan
+        working-directory: ${{ env.TF_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform fmt -check -recursive
+          terraform init -reconfigure \
+            -backend-config="resource_group_name=${TF_STATE_RG}" \
+            -backend-config="storage_account_name=${STATE_STORAGE_ACCOUNT}" \
+            -backend-config="container_name=${TF_STATE_CONTAINER}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="access_key=${STATE_STORAGE_KEY}"
+          terraform validate
+          terraform plan -out tfplan \
+            -var="foundry_resource_group_name=rg-agentic-poc-swc" \
+            -var="foundry_location=swedencentral" \
+            -var="foundry_project_name=SCBXAIplatformPOC"
+
+      - name: Terraform apply
+        if: github.event_name != 'pull_request'
+        working-directory: ${{ env.TF_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform apply -auto-approve tfplan
+
+      - name: Capture outputs
+        id: tf-output
+        if: github.event_name != 'pull_request'
+        working-directory: ${{ env.TF_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "foundry_project_endpoint=$(terraform output -raw foundry_project_endpoint)" >> "$GITHUB_OUTPUT"
+          echo "orchestrator_fqdn=$(terraform output -raw orchestrator_fqdn)" >> "$GITHUB_OUTPUT"
+          echo "tools_function_hostname=$(terraform output -raw tools_function_hostname)" >> "$GITHUB_OUTPUT"
+          echo "static_web_app_hostname=$(terraform output -raw static_web_app_default_hostname || true)" >> "$GITHUB_OUTPUT"
+          terraform output -json > terraform-outputs.json
+          echo '### Terraform outputs' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat terraform-outputs.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  foundry_agents:
+    name: Provision Foundry agents
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: terraform
+    if: github.event_name != 'pull_request' && (inputs.provision_foundry_agents != false || inputs.deploy_backend != false)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Foundry provisioning dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Provision Foundry agents and workflows
+        shell: bash
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ needs.terraform.outputs.foundry_project_endpoint }}
+        run: |
+          set -euo pipefail
+          python backend/scripts/provision_foundry_agents.py
+
+      - name: Upload generated agent mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundry-agent-ids
+          path: backend/app/foundry_agent_ids.json
+          if-no-files-found: error
+
+  backend:
+    name: Build + deploy orchestrator
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: [terraform, foundry_agents]
+    if: github.event_name != 'pull_request' && inputs.deploy_backend != false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Foundry agent mapping
+        uses: actions/download-artifact@v4
+        with:
+          name: foundry-agent-ids
+          path: backend/app
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve image tag
+        id: tag
+        run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: ACR build + push
+        run: |
+          az acr build \
+            --registry ${{ vars.ACR_NAME }} \
+            --image ${{ env.BACKEND_IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
+            --image ${{ env.BACKEND_IMAGE_NAME }}:latest \
+            ./backend
+
+      - name: Deploy image to Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ env.ACA_APP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+
+      - name: Show app FQDN
+        run: |
+          fqdn=$(az containerapp show -n ${{ env.ACA_APP }} -g ${{ env.RESOURCE_GROUP }} \
+                 --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Orchestrator: https://$fqdn" >> "$GITHUB_STEP_SUMMARY"
+
+  functions:
+    name: Publish Function Apps
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: terraform
+    if: github.event_name != 'pull_request' && inputs.deploy_functions != false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app_name: agpoc-func-tools-dev
+            src: backend/functions/tools
+          - app_name: agpoc-func-durable-dev
+            src: backend/functions/durable
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "${{ matrix.src }}/requirements.txt" ]; then
+            pip install -r "${{ matrix.src }}/requirements.txt" --target "${{ matrix.src }}/.python_packages/lib/site-packages"
+          fi
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish ${{ matrix.app_name }}
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ matrix.app_name }}
+          package: ${{ matrix.src }}
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
+
+  frontend:
+    name: Build + deploy frontend
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: terraform
+    if: github.event_name != 'pull_request' && inputs.deploy_frontend != false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.UI_DIR }}/package-lock.json
+
+      - name: Install + build (Vite)
+        working-directory: ${{ env.UI_DIR }}
+        env:
+          VITE_API_BASE_URL: ${{ needs.terraform.outputs.orchestrator_fqdn }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: ${{ env.UI_DIR }}
+          output_location: dist
+          skip_app_build: true

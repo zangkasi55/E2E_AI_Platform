@@ -66,7 +66,7 @@ export interface Backend {
   /** Microsoft Purview / DSPM-for-AI data-security events (label scans + DLP blocks). */
   getDspmEvents(limit?: number): Promise<DspmEvent[]>;
   /** Resume a HITL-paused run on human approval. POST /api/runs/{id}/approve. */
-  approve(runId: string, decision: "approve" | "request_edits", reviewer: string): Promise<void>;
+  approve(runId: string, decision: "approve" | "reject", reviewer: string, reason?: string): Promise<void>;
 }
 
 export const USE_MOCK = String(import.meta.env.VITE_USE_MOCK ?? "true") !== "false";

@@ -37,6 +37,11 @@ enable_defender_paid_plans = true
 deploy_static_web_app   = true
 static_web_app_location = "eastasia"
 
+# --- Foundry live stack (separate RG, swedencentral) ---
+foundry_resource_group_name = "rg-agentic-poc-swc"
+foundry_location            = "swedencentral"
+foundry_project_name        = "SCBXAIplatformPOC"
+
 tags = {
   project     = "agentic-ai-poc"
   environment = "dev"

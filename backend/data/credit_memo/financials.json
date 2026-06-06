@@ -1,0 +1,45 @@
+{
+  "_comment": "SYNTHETIC 3-year financial statements per applicant. All amounts in THB. Consumed by get_financials tool; calculate_ratios derives DSCR, leverage, margins, current ratio.",
+  "financials": {
+    "APP-1001": {
+      "currency": "THB",
+      "fiscal_years": [
+        {"year": 2023, "revenue": 210000000, "cogs": 162000000, "ebitda": 24500000, "net_income": 11800000, "total_assets": 145000000, "current_assets": 78000000, "current_liabilities": 52000000, "total_debt": 61000000, "interest_expense": 3100000, "equity": 64000000, "cash": 14000000},
+        {"year": 2024, "revenue": 238000000, "cogs": 181000000, "ebitda": 28900000, "net_income": 14200000, "total_assets": 162000000, "current_assets": 86000000, "current_liabilities": 55000000, "total_debt": 66000000, "interest_expense": 3400000, "equity": 73000000, "cash": 17500000},
+        {"year": 2025, "revenue": 271000000, "cogs": 205000000, "ebitda": 33600000, "net_income": 16900000, "total_assets": 181000000, "current_assets": 95000000, "current_liabilities": 58000000, "total_debt": 70000000, "interest_expense": 3700000, "equity": 84000000, "cash": 21000000}
+      ]
+    },
+    "APP-1002": {
+      "currency": "THB",
+      "fiscal_years": [
+        {"year": 2023, "revenue": 96000000, "cogs": 71000000, "ebitda": 14200000, "net_income": 5100000, "total_assets": 132000000, "current_assets": 41000000, "current_liabilities": 38000000, "total_debt": 78000000, "interest_expense": 4600000, "equity": 41000000, "cash": 9000000},
+        {"year": 2024, "revenue": 128000000, "cogs": 92000000, "ebitda": 19800000, "net_income": 8700000, "total_assets": 168000000, "current_assets": 52000000, "current_liabilities": 44000000, "total_debt": 96000000, "interest_expense": 5800000, "equity": 51000000, "cash": 11500000},
+        {"year": 2025, "revenue": 174000000, "cogs": 121000000, "ebitda": 28400000, "net_income": 13200000, "total_assets": 214000000, "current_assets": 67000000, "current_liabilities": 49000000, "total_debt": 118000000, "interest_expense": 7100000, "equity": 62000000, "cash": 13000000}
+      ]
+    },
+    "APP-1003": {
+      "currency": "THB",
+      "fiscal_years": [
+        {"year": 2023, "revenue": 142000000, "cogs": 116000000, "ebitda": 12100000, "net_income": 4900000, "total_assets": 88000000, "current_assets": 61000000, "current_liabilities": 47000000, "total_debt": 39000000, "interest_expense": 2300000, "equity": 39000000, "cash": 6500000},
+        {"year": 2024, "revenue": 138000000, "cogs": 115000000, "ebitda": 10400000, "net_income": 3600000, "total_assets": 86000000, "current_assets": 59000000, "current_liabilities": 49000000, "total_debt": 41000000, "interest_expense": 2500000, "equity": 36000000, "cash": 5200000},
+        {"year": 2025, "revenue": 151000000, "cogs": 123000000, "ebitda": 13900000, "net_income": 5400000, "total_assets": 92000000, "current_assets": 64000000, "current_liabilities": 50000000, "total_debt": 43000000, "interest_expense": 2600000, "equity": 40000000, "cash": 7100000}
+      ]
+    },
+    "APP-1004": {
+      "currency": "THB",
+      "fiscal_years": [
+        {"year": 2023, "revenue": 118000000, "cogs": 89000000, "ebitda": 17600000, "net_income": 7200000, "total_assets": 124000000, "current_assets": 38000000, "current_liabilities": 33000000, "total_debt": 72000000, "interest_expense": 4100000, "equity": 44000000, "cash": 8800000},
+        {"year": 2024, "revenue": 134000000, "cogs": 100000000, "ebitda": 20100000, "net_income": 8600000, "total_assets": 139000000, "current_assets": 43000000, "current_liabilities": 35000000, "total_debt": 79000000, "interest_expense": 4500000, "equity": 50000000, "cash": 10200000},
+        {"year": 2025, "revenue": 149000000, "cogs": 111000000, "ebitda": 22800000, "net_income": 9900000, "total_assets": 156000000, "current_assets": 49000000, "current_liabilities": 37000000, "total_debt": 85000000, "interest_expense": 4900000, "equity": 57000000, "cash": 11800000}
+      ]
+    },
+    "APP-1005": {
+      "currency": "THB",
+      "fiscal_years": [
+        {"year": 2023, "revenue": 188000000, "cogs": 156000000, "ebitda": 18900000, "net_income": 7400000, "total_assets": 134000000, "current_assets": 72000000, "current_liabilities": 58000000, "total_debt": 54000000, "interest_expense": 3200000, "equity": 56000000, "cash": 9300000},
+        {"year": 2024, "revenue": 201000000, "cogs": 166000000, "ebitda": 21300000, "net_income": 8800000, "total_assets": 142000000, "current_assets": 78000000, "current_liabilities": 60000000, "total_debt": 56000000, "interest_expense": 3300000, "equity": 61000000, "cash": 10600000},
+        {"year": 2025, "revenue": 219000000, "cogs": 180000000, "ebitda": 24100000, "net_income": 10200000, "total_assets": 153000000, "current_assets": 85000000, "current_liabilities": 62000000, "total_debt": 59000000, "interest_expense": 3500000, "equity": 68000000, "cash": 12400000}
+      ]
+    }
+  }
+}

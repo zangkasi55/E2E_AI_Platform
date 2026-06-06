@@ -1,0 +1,61 @@
+{
+  "_comment": "SYNTHETIC approved-source corpus chunks for Azure AI Search (agpoc-search-dev). Consumed by search_documents tool with source_filter. doc_retrieval agent grounds the memo on these chunks only (approved sources).",
+  "documents": [
+    {
+      "chunk_id": "DOC-POL-001",
+      "source": "credit_policy",
+      "title": "SME Credit Policy — DSCR Thresholds",
+      "applicant_scope": "ALL",
+      "text": "Minimum debt-service coverage ratio (DSCR) for SME term facilities is 1.25x. Facilities between 1.10x and 1.25x require enhanced collateral and a senior credit officer override. Below 1.10x is outside appetite."
+    },
+    {
+      "chunk_id": "DOC-POL-002",
+      "source": "credit_policy",
+      "title": "SME Credit Policy — Leverage Limits",
+      "applicant_scope": "ALL",
+      "text": "Net debt / EBITDA must not exceed 4.0x at origination for standard SME facilities. Renewable-energy project finance may extend to 4.5x where contracted offtake covers >80% of capacity."
+    },
+    {
+      "chunk_id": "DOC-IND-010",
+      "source": "industry_report",
+      "title": "Thai Food & Beverage Sector Outlook 2026",
+      "applicant_scope": "APP-1001",
+      "text": "Thailand processed-food exports projected to grow 6-8% in 2026 on regional demand. Cold-chain capacity remains a competitive bottleneck for mid-sized processors in Samut Sakhon."
+    },
+    {
+      "chunk_id": "DOC-IND-011",
+      "source": "industry_report",
+      "title": "Thailand Rooftop Solar Market 2026",
+      "applicant_scope": "APP-1002",
+      "text": "Commercial rooftop solar adoption accelerating under BOI incentives. EPC margins under pressure from module price volatility; contracted PPAs materially de-risk project cash flows."
+    },
+    {
+      "chunk_id": "DOC-IND-012",
+      "source": "industry_report",
+      "title": "Thai Textile Export Cycle",
+      "applicant_scope": "APP-1003",
+      "text": "Northern Thailand textile exporters face seasonal working-capital swings; Q4 order surges typically strain liquidity. Buyers increasingly demand sustainable-sourcing certification."
+    },
+    {
+      "chunk_id": "DOC-FIN-020",
+      "source": "applicant_filing",
+      "title": "Siam Lotus Foods — Management Discussion FY2025",
+      "applicant_scope": "APP-1001",
+      "text": "Management attributes FY2025 revenue growth of 13.9% to new export contracts in Vietnam and Malaysia. Cold-storage expansion expected to lift gross margin by ~150bps once commissioned."
+    },
+    {
+      "chunk_id": "DOC-FIN-021",
+      "source": "applicant_filing",
+      "title": "Bangkok Greentech Solar — Project Pipeline Note",
+      "applicant_scope": "APP-1002",
+      "text": "Three rooftop projects (total 3MW) carry 15-year PPAs with investment-grade offtakers covering 84% of generation. Construction milestones on schedule per FY2025 review."
+    },
+    {
+      "chunk_id": "DOC-FIN-022",
+      "source": "applicant_filing",
+      "title": "Andaman Logistics — Fleet Utilisation Report",
+      "applicant_scope": "APP-1004",
+      "text": "Existing refrigerated fleet running at 91% utilisation. New 12-truck acquisition underpinned by signed cold-chain contracts with two Phuket seafood exporters."
+    }
+  ]
+}

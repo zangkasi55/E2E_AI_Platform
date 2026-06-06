@@ -143,7 +143,7 @@
       title: "HITL pause — awaiting human approval",
       tool: null, apim: false,
       detail: "Durable Functions suspends the workflow and routes the draft to a human reviewer in Teams. agent drafts, human decides.",
-      result: "Workflow PAUSED. Reviewer can Approve or Request edits. No memo is final without approval.",
+      result: "Workflow PAUSED. Reviewer can Approve or Reject. No memo is final without approval.",
       audit: "HITL pause · durable instance suspended · routed to reviewer (Teams) · queue=hitl-approvals",
       tokens: null,
       hitl: true

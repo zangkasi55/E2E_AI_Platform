@@ -6,9 +6,10 @@ OIDC** (`azure/login@v2`) — **no client secrets** stored in GitHub.
 | Workflow | Trigger paths | What it does |
 |----------|---------------|--------------|
 | `infra.yml` | `infra/**` | `bicep build` → `what-if` → `az deployment sub create` (creates `rg-agentic-poc-sea`). |
+| `platform.yml` | `infra/terraform/**`, `backend/**`, `frontend/**` | Boots Terraform state, applies the full Terraform stack, provisions Foundry agents, then deploys backend, functions, and frontend. |
 | `backend.yml` | `backend/**` | `az acr build` the orchestrator image → `az containerapp update` (`agpoc-aca-orch-dev`). |
 | `functions.yml` | `backend/functions/**` | Publish `agpoc-func-tools-dev` + `agpoc-func-durable-dev` (Python v2, matrix). |
-| `ui.yml` | `ui/**` | `npm ci && npm run build` (Vite) → deploy to Static Web Apps. |
+| `ui.yml` | `frontend/**` | `npm ci && npm run build` (Vite) → deploy production SPA to Static Web Apps. |
 
 ---
 

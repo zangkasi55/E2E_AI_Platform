@@ -232,7 +232,11 @@ class BankingController:
             # default to the user's first account in synthetic data
             src_account = self._default_account(msg.user_id)
             slots.src_account = src_account
-        balance_res = registry.get_balance(msg.user_id, src_account)
+        balance_res = registry.get_balance(
+            msg.user_id,
+            src_account,
+            caller_agent="banking_controller",
+        )
         self._trace(run, step, "get_balance", inp={"user_id": msg.user_id, "account_id": src_account}, out=balance_res)
         if "error" in balance_res:
             run.status = RunStatus.FAILED
@@ -275,7 +279,11 @@ class BankingController:
 
         # === Resolve payee =================================================
         step += 1
-        payee_res = registry.resolve_payee(msg.user_id, slots.payee_alias or "")
+        payee_res = registry.resolve_payee(
+            msg.user_id,
+            slots.payee_alias or "",
+            caller_agent="banking_controller",
+        )
         self._trace(run, step, "resolve_payee", inp={"payee_alias": slots.payee_alias}, out=payee_res)
         if "error" in payee_res:
             run.status = RunStatus.COMPLETED
@@ -289,7 +297,11 @@ class BankingController:
         # === Deterministic PDP: eligibility (still no money movement) ======
         step += 1
         elig = registry.check_transfer_eligibility(
-            msg.user_id, src_account, slots.payee_id, float(slots.amount_thb)
+            msg.user_id,
+            src_account,
+            slots.payee_id,
+            float(slots.amount_thb),
+            caller_agent="banking_controller",
         )
         self._trace(run, step, "check_transfer_eligibility", inp={"amount": slots.amount_thb}, out=elig)
         policy = PolicyResult(
@@ -309,7 +321,10 @@ class BankingController:
         step += 1
         intent = f"transfer {slots.amount_thb:.0f} THB to {slots.payee_alias} ({slots.payee_id})"
         handoff_payload = registry.request_transaction_handoff(
-            intent=intent, slots=slots.model_dump(), policy_result=policy.model_dump()
+            intent=intent,
+            slots=slots.model_dump(),
+            policy_result=policy.model_dump(),
+            caller_agent="banking_controller",
         )
         # Build the strongly-typed, audited handoff object. The model pins
         # requires_confirmation / requires_step_up_auth to Literal[True].

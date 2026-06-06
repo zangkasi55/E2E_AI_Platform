@@ -12,6 +12,7 @@ from typing import Optional
 
 from ..config import settings
 from ..models import HandoffObject, RunState, StepTrace
+from .otel import emit_agent_activity
 
 
 class AuditStore:
@@ -30,6 +31,13 @@ class AuditStore:
         with self._lock:
             self._runs[run.run_id] = run
         self._upsert("runs", run.model_dump(), pk=run.run_id)
+        emit_agent_activity(
+            event="run_state",
+            run_id=run.run_id,
+            agent="memo_orchestrator" if run.use_case.value == "credit_memo" else "banking_controller",
+            action="save_run",
+            status=str(run.status),
+        )
         return run
 
     def get_run(self, run_id: str) -> Optional[RunState]:
@@ -45,6 +53,14 @@ class AuditStore:
         with self._lock:
             self._steps.setdefault(step.run_id, []).append(step)
         self._upsert("steps", step.model_dump(), pk=step.run_id)
+        emit_agent_activity(
+            event="step_trace",
+            run_id=step.run_id,
+            agent=step.agent,
+            action=step.action,
+            status=step.status.value,
+            step=step.step,
+        )
         return step
 
     def steps_for_run(self, run_id: str) -> list[StepTrace]:
@@ -56,6 +72,13 @@ class AuditStore:
         with self._lock:
             self._handoffs[handoff.handoff_id] = handoff
         self._upsert("handoffs", handoff.model_dump(), pk=handoff.run_id)
+        emit_agent_activity(
+            event="handoff",
+            run_id=handoff.run_id,
+            agent="banking_controller",
+            action="request_transaction_handoff",
+            status=handoff.status,
+        )
         return handoff
 
     def get_handoff(self, handoff_id: str) -> Optional[HandoffObject]:

@@ -181,7 +181,12 @@ export const mockBackend: Backend = {
     };
   },
 
-  async approve(): Promise<void> {
+  async approve(
+    _runId: string,
+    _decision: "approve" | "reject",
+    _reviewer: string,
+    _reason?: string,
+  ): Promise<void> {
     await delay(120);
     // No-op in mock: the player resumes locally to the final step.
   },

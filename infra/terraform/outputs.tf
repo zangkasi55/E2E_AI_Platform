@@ -84,3 +84,18 @@ output "static_web_app_default_hostname" {
   description = "Static Web App default hostname (if deployed)."
   value       = var.deploy_static_web_app ? azurerm_static_web_app.ui[0].default_host_name : null
 }
+
+output "foundry_project_endpoint" {
+  description = "Foundry project endpoint for the live agent provisioning script."
+  value       = "https://${azurerm_cognitive_account.foundry.name}.services.ai.azure.com/api/projects/${var.foundry_project_name}"
+}
+
+output "foundry_openai_endpoint" {
+  description = "Foundry Azure OpenAI endpoint."
+  value       = "https://${azurerm_cognitive_account.foundry.name}.openai.azure.com/"
+}
+
+output "foundry_resource_group_name" {
+  description = "Resource group that holds the Foundry stack."
+  value       = azurerm_resource_group.foundry.name
+}

@@ -248,32 +248,38 @@ button {
   margin: 0;
   padding: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0;
+  flex-direction: row;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 12px;
+  overflow-x: visible;
+  padding-bottom: 0;
 }
 .node {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-areas:
+    "glyph chip"
+    "glyph meta";
+  column-gap: 12px;
+  row-gap: 6px;
+  align-items: start;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 11px 13px;
   background: #fff;
   opacity: 0.55;
   transition: opacity 0.25s, box-shadow 0.25s, border-color 0.25s, background 0.25s;
+  min-width: 0;
+  flex: 1 1 190px;
 }
-.node + .node { margin-top: 22px; }
+.node + .node { margin-top: 0; }
 .node + .node::before {
-  content: "";
-  position: absolute;
-  top: -19px;
-  left: 28px;
-  width: 2px;
-  height: 16px;
-  background: var(--line);
+  content: none;
 }
 .node .glyph {
+  grid-area: glyph;
   width: 34px;
   height: 34px;
   border-radius: 9px;
@@ -285,9 +291,22 @@ button {
   background: var(--muted);
   flex-shrink: 0;
 }
-.node .meta { flex: 1; min-width: 0; }
+.node .meta {
+  grid-area: meta;
+  min-width: 0;
+}
 .node .meta .nm { font-weight: 700; font-size: 13.5px; }
-.node .meta .role { color: var(--muted); font-size: 12px; }
+.node .meta .role {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: normal;
+  word-break: break-word;
+}
+.node > .chip {
+  grid-area: chip;
+  justify-self: end;
+  align-self: start;
+}
 .node.clickable { cursor: pointer; }
 .node.clickable:focus-visible {
   outline: 2px solid var(--agent2);
@@ -318,6 +337,37 @@ button {
 .node.hitl.working .glyph { background: var(--obs); }
 .node.final.working .glyph,
 .node.final.done .glyph { background: var(--ok); }
+
+@media (max-width: 980px) {
+  .flow {
+    gap: 10px;
+  }
+  .node {
+    flex-basis: 170px;
+  }
+}
+
+@media (max-width: 760px) {
+  .flow {
+    flex-direction: column;
+    overflow-x: visible;
+    gap: 0;
+    padding-bottom: 0;
+  }
+  .node {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .node + .node {
+    margin-top: 22px;
+  }
+  .node + .node::before {
+    top: -19px;
+    left: 28px;
+    width: 2px;
+    height: 16px;
+  }
+}
 
 /* status chip */
 .chip {
@@ -415,8 +465,44 @@ button {
 .hitlbar p { margin: 0 0 11px; color: var(--muted); font-size: 12.6px; }
 .hitlbar .hitl-guidance { margin-bottom: 8px; }
 .hitlbar .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.hitlbar .hitl-note-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.hitlbar .hitl-note-wrap label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.hitlbar .hitl-note {
+  width: 100%;
+  min-height: 76px;
+  border: 1px solid #cfd9e8;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 12.6px;
+  line-height: 1.4;
+  font-family: inherit;
+  resize: vertical;
+}
+.hitlbar .hitl-note:focus {
+  outline: 2px solid rgba(46, 125, 209, 0.25);
+  border-color: #2e7dd1;
+}
+.hitlbar .hitl-note-error {
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 600;
+}
+.hitlbar .hitl-note-summary {
+  margin-top: -3px;
+}
 .hitlbar.resolved { border-left-color: var(--ok); background: linear-gradient(90deg, #eef9f0, #ffffff); }
 .hitlbar.resolved h3 { color: var(--ok); }
+.hitlbar.resolved.rejected { border-left-color: #b42318; background: linear-gradient(90deg, #fff3f2, #ffffff); }
+.hitlbar.resolved.rejected h3 { color: #b42318; }
 
 .dr-dropzone {
   border: 1.5px dashed #b8cbe8;

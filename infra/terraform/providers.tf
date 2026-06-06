@@ -31,15 +31,10 @@ terraform {
   }
 
   # ---------------------------------------------------------------------------
-  # Remote state (recommended). Uncomment and point at a pre-created storage
-  # account to keep state off local disk. For the PoC, local state also works.
+  # Remote state (recommended). The Terraform workflow bootstraps the backend
+  # storage account and passes backend settings at init time.
   # ---------------------------------------------------------------------------
-  # backend "azurerm" {
-  #   resource_group_name  = "rg-tfstate"
-  #   storage_account_name = "agpoctfstate"
-  #   container_name       = "tfstate"
-  #   key                  = "agentic-poc.tfstate"
-  # }
+  backend "azurerm" {}
 }
 
 provider "azurerm" {

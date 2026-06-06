@@ -1,0 +1,31 @@
+{
+  "policy_id": "sp-entra-apim-agent-001",
+  "name": "Agent Tool Access Security Policy",
+  "owner": "Security Architecture",
+  "platform": "Microsoft Entra ID + Azure API Management",
+  "scope": [
+    "orchestrator",
+    "tool_bridge",
+    "ui"
+  ],
+  "controls": [
+    {
+      "id": "SP-01",
+      "title": "Token-based access control",
+      "requirement": "All tool calls require Entra-issued JWT tokens validated by APIM.",
+      "entra_capability": "App registrations, OAuth2 scopes, managed identity"
+    },
+    {
+      "id": "SP-02",
+      "title": "Least-privilege role assignments",
+      "requirement": "Each workload identity receives only the minimum role per component.",
+      "entra_capability": "RBAC role assignment + workload identity separation"
+    },
+    {
+      "id": "SP-03",
+      "title": "Deterministic policy boundary",
+      "requirement": "APIM policy enforces scope checks, rate limits, and request logging for tool invocations.",
+      "entra_capability": "Scope claims and audience validation"
+    }
+  ]
+}

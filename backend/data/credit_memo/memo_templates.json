@@ -1,0 +1,32 @@
+{
+  "_comment": "SYNTHETIC credit memo templates. Consumed by render_memo tool (template_id). memo_assembler agent fills the section bodies.",
+  "templates": [
+    {
+      "template_id": "TMPL-SME-STD-01",
+      "name": "SME Standard Credit Memo",
+      "version": "1.0",
+      "sections": [
+        {"key": "executive_summary", "title": "Executive Summary", "required": true},
+        {"key": "borrower_profile", "title": "Borrower Profile", "required": true},
+        {"key": "facility_request", "title": "Facility Request", "required": true},
+        {"key": "financial_analysis", "title": "Financial Analysis", "required": true},
+        {"key": "ratio_dashboard", "title": "Key Ratios", "required": true},
+        {"key": "bureau_assessment", "title": "Credit Bureau Assessment", "required": true},
+        {"key": "risks_mitigants", "title": "Risks & Mitigants", "required": true},
+        {"key": "recommendation", "title": "Recommendation (Draft — Human Decision Required)", "required": true}
+      ]
+    },
+    {
+      "template_id": "TMPL-SME-FAST-02",
+      "name": "SME Fast-Track Memo (Renewals)",
+      "version": "1.0",
+      "sections": [
+        {"key": "executive_summary", "title": "Executive Summary", "required": true},
+        {"key": "facility_request", "title": "Facility Request", "required": true},
+        {"key": "ratio_dashboard", "title": "Key Ratios", "required": true},
+        {"key": "bureau_assessment", "title": "Credit Bureau Assessment", "required": true},
+        {"key": "recommendation", "title": "Recommendation (Draft — Human Decision Required)", "required": true}
+      ]
+    }
+  ]
+}

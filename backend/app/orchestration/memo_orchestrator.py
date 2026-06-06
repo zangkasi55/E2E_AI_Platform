@@ -295,8 +295,13 @@ class MemoOrchestrator:
         docs = registry.search_documents(
             query=f"credit policy DSCR leverage outlook {applicant_id}",
             source_filter=applicant_id,
+            caller_agent="doc_retrieval",
         )
-        policy_docs = registry.search_documents(query="DSCR leverage limit", source_filter="credit_policy")
+        policy_docs = registry.search_documents(
+            query="DSCR leverage limit",
+            source_filter="credit_policy",
+            caller_agent="doc_retrieval",
+        )
         retrieval_ctx = {"applicant_chunks": docs["results"], "policy_chunks": policy_docs["results"]}
         retrieval_input = {"applicant_id": applicant_id}
         if dr_document:
@@ -321,8 +326,8 @@ class MemoOrchestrator:
 
         # --- Step 2: financial_ratio ---------------------------------------
         step += 1
-        financials = registry.get_financials(applicant_id)
-        ratios = registry.calculate_ratios(financials)
+        financials = registry.get_financials(applicant_id, caller_agent="financial_ratio")
+        ratios = registry.calculate_ratios(financials, caller_agent="financial_ratio")
         ratio_agent = self.agents["financial_ratio"].run_step(
             run_id=run.run_id,
             step=step,
@@ -346,7 +351,7 @@ class MemoOrchestrator:
 
         # --- Step 3: bureau_summary ----------------------------------------
         step += 1
-        bureau = registry.get_bureau_report(applicant_id)
+        bureau = registry.get_bureau_report(applicant_id, caller_agent="bureau_summary")
         bureau_agent = self.agents["bureau_summary"].run_step(
             run_id=run.run_id,
             step=step,
@@ -378,7 +383,11 @@ class MemoOrchestrator:
             bureau=bureau,
             bureau_text=bureau_agent.text,
         )
-        draft = registry.render_memo(sections=sections, template_id=request.template_id)
+        draft = registry.render_memo(
+            sections=sections,
+            template_id=request.template_id,
+            caller_agent="memo_assembler",
+        )
         self.agents["memo_assembler"].run_step(
             run_id=run.run_id,
             step=step,

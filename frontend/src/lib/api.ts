@@ -155,10 +155,10 @@ export const apiBackend: Backend = {
     return http<DspmEvent[]>(`/api/governance/dspm-events?limit=${limit}`);
   },
 
-  async approve(runId, decision, reviewer): Promise<void> {
+  async approve(runId, decision, reviewer, reason): Promise<void> {
     await http<unknown>(`/api/runs/${runId}/approve`, {
       method: "POST",
-      body: JSON.stringify({ decision, reviewer }),
+      body: JSON.stringify({ decision, reviewer, reason }),
     });
   },
 };

@@ -74,32 +74,73 @@ def _check_scope(tool_name: str, granted_scopes: Optional[set[str]]) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# APIM transport (live mode)
-# ---------------------------------------------------------------------------
-def _post_through_apim(tool_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _resolve_agent_id(caller_agent: Optional[str]) -> str:
+    if not caller_agent:
+        return "orchestrator"
+    return settings.foundry_agent_ids.get(caller_agent, caller_agent)
+
+
+def _apim_token_scope() -> Optional[str]:
+    # Prefer an explicit scope, else derive from the tool-bridge app id.
+    explicit = (getattr(settings, "apim_token_scope", "") or "").strip()
+    if explicit:
+        return explicit
+    if settings.entra_tool_bridge_client_id:
+        return f"api://{settings.entra_tool_bridge_client_id}/.default"
+    return None
+
+
+def _get_apim_auth_header() -> dict[str, str]:
+    scope = _apim_token_scope()
+    if not scope:
+        return {}
+    try:
+        from ..identity import get_credential
+
+        token = get_credential().get_token(scope).token
+        return {"Authorization": f"Bearer {token}"}
+    except Exception:
+        # Best effort for local/hybrid environments where APIM bearer auth is optional.
+        return {}
+
+
+def _post_through_apim(
+    tool_name: str,
+    payload: dict[str, Any],
+    *,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
     """POST a tool invocation through APIM to the Functions backend.
 
-    TODO(copilot): Attach the agent's Entra bearer token (audience =
-    agpoc-tool-bridge) so APIM validates scope at the gateway. The subscription
-    key below is a secondary gate only.
+    Includes an Entra bearer token (when configured) and agent identity headers
+    so APIM/PDP can enforce and audit per-agent access.
     """
     url = f"{settings.apim_base_url.rstrip('/')}/{tool_name}"
+    agent_id = _resolve_agent_id(caller_agent)
     headers = {
         "Content-Type": "application/json",
         "Ocp-Apim-Subscription-Key": settings.apim_subscription_key,
+        "x-agent-logical-id": caller_agent or "orchestrator",
+        "x-agent-id": agent_id,
     }
+    headers.update(_get_apim_auth_header())
     with httpx.Client(timeout=30.0) as client:
         resp = client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         return resp.json()
 
 
-def _invoke(tool_name: str, payload: dict[str, Any], mock_fn) -> dict[str, Any]:
+def _invoke(
+    tool_name: str,
+    payload: dict[str, Any],
+    mock_fn,
+    *,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
     """Shared dispatch: mock vs APIM, after the scope gate has passed."""
     if settings.mock_mode:
         return mock_fn()
-    return _post_through_apim(tool_name, payload)
+    return _post_through_apim(tool_name, payload, caller_agent=caller_agent)
 
 
 # ===========================================================================
@@ -110,6 +151,7 @@ def search_documents(
     source_filter: Optional[str] = None,
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Search approved-source corpus; returns grounded chunks.
 
@@ -139,6 +181,7 @@ def search_documents(
         "search_documents",
         {"query": query, "source_filter": source_filter},
         mock,
+        caller_agent=caller_agent,
     )
 
 
@@ -146,6 +189,7 @@ def get_financials(
     applicant_id: str,
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Return 3-year financial statements for an applicant."""
     _check_scope("get_financials", granted_scopes)
@@ -157,13 +201,19 @@ def get_financials(
             return {"applicant_id": applicant_id, "error": "not_found"}
         return {"applicant_id": applicant_id, **fin}
 
-    return _invoke("get_financials", {"applicant_id": applicant_id}, mock)
+    return _invoke(
+        "get_financials",
+        {"applicant_id": applicant_id},
+        mock,
+        caller_agent=caller_agent,
+    )
 
 
 def calculate_ratios(
     financials: dict[str, Any],
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Compute key credit ratios from a financials object.
 
@@ -213,6 +263,7 @@ def get_bureau_report(
     applicant_id: str,
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Return the synthetic credit-bureau report for an applicant."""
     _check_scope("get_bureau_report", granted_scopes)
@@ -224,7 +275,12 @@ def get_bureau_report(
             return {"applicant_id": applicant_id, "error": "not_found"}
         return {"applicant_id": applicant_id, **rep}
 
-    return _invoke("get_bureau_report", {"applicant_id": applicant_id}, mock)
+    return _invoke(
+        "get_bureau_report",
+        {"applicant_id": applicant_id},
+        mock,
+        caller_agent=caller_agent,
+    )
 
 
 def render_memo(
@@ -232,6 +288,7 @@ def render_memo(
     template_id: str,
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Render section bodies into a structured draft using a template.
 
@@ -263,7 +320,10 @@ def render_memo(
         }
 
     return _invoke(
-        "render_memo", {"sections": sections, "template_id": template_id}, mock
+        "render_memo",
+        {"sections": sections, "template_id": template_id},
+        mock,
+        caller_agent=caller_agent,
     )
 
 
@@ -275,6 +335,7 @@ def get_balance(
     account_id: str,
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Read the balance (THB) of a user's account."""
     _check_scope("get_balance", granted_scopes)
@@ -294,7 +355,12 @@ def get_balance(
             "currency": acct["currency"],
         }
 
-    return _invoke("get_balance", {"user_id": user_id, "account_id": account_id}, mock)
+    return _invoke(
+        "get_balance",
+        {"user_id": user_id, "account_id": account_id},
+        mock,
+        caller_agent=caller_agent,
+    )
 
 
 def resolve_payee(
@@ -302,6 +368,7 @@ def resolve_payee(
     payee_alias: str,
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Resolve a payee alias (e.g. 'mom') to a payee id for a user."""
     _check_scope("resolve_payee", granted_scopes)
@@ -316,7 +383,10 @@ def resolve_payee(
         return {"user_id": user_id, "payee_alias": payee_alias, **match}
 
     return _invoke(
-        "resolve_payee", {"user_id": user_id, "payee_alias": payee_alias}, mock
+        "resolve_payee",
+        {"user_id": user_id, "payee_alias": payee_alias},
+        mock,
+        caller_agent=caller_agent,
     )
 
 
@@ -327,6 +397,7 @@ def check_transfer_eligibility(
     amount: float,
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Deterministic PDP check — is this transfer permitted? Moves NO money.
 
@@ -338,7 +409,12 @@ def check_transfer_eligibility(
         reasons: list[str] = []
         eligible = True
         # Re-read balance to validate sufficiency (synthetic).
-        bal = get_balance(user_id, src_account, granted_scopes=granted_scopes)
+        bal = get_balance(
+            user_id,
+            src_account,
+            granted_scopes=granted_scopes,
+            caller_agent=caller_agent,
+        )
         balance = float(bal.get("balance_thb", 0))
         if "error" in bal:
             eligible = False
@@ -371,6 +447,7 @@ def check_transfer_eligibility(
             "amount": amount,
         },
         mock,
+        caller_agent=caller_agent,
     )
 
 
@@ -380,6 +457,7 @@ def request_transaction_handoff(
     policy_result: dict[str, Any],
     *,
     granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
 ) -> dict[str, Any]:
     """TERMINAL banking action — emit an auditable handoff object.
 

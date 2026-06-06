@@ -66,11 +66,18 @@ def record_token_metric(rec: TokenRecord) -> None:
     """Emit one ``gen_ai.token.usage`` data point with canonical dimensions."""
     if _token_usage_counter is None:
         return
+    foundry_agent_id = settings.foundry_agent_ids.get(rec.agent)
+    from ..identity import identity_for
+
+    identity = identity_for(rec.agent)
     _token_usage_counter.add(
         rec.total_tokens,
         attributes={
             "gen_ai.response.model": rec.model,
             "agent": rec.agent,
+            "agent.id": foundry_agent_id or rec.agent,
+            "agent.identity.client_id": identity.client_id or "",
+            "agent.identity.role": identity.app_role,
             "use_case": rec.use_case,
             "run_id": rec.run_id,
         },
@@ -106,6 +113,9 @@ def start_gen_ai_span(
     model: str,
     use_case: str,
     run_id: str,
+    agent_id: Optional[str] = None,
+    identity_client_id: Optional[str] = None,
+    identity_role: Optional[str] = None,
 ):
     """Start a GenAI-convention span (``<operation> <target>``) for one call.
 
@@ -123,6 +133,9 @@ def start_gen_ai_span(
             "gen_ai.operation.name": operation,
             "gen_ai.request.model": model,
             "gen_ai.agent.name": agent,
+            "agent.id": agent_id or agent,
+            "agent.identity.client_id": identity_client_id or "",
+            "agent.identity.role": identity_role or "",
             "use_case": use_case,
             "run_id": run_id,
         },
@@ -141,3 +154,33 @@ def set_gen_ai_usage(prompt_tokens: int, completion_tokens: int) -> None:
     span.set_attribute("gen_ai.usage.input_tokens", prompt_tokens)
     span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
     span.set_attribute("gen_ai.usage.total_tokens", prompt_tokens + completion_tokens)
+
+
+def emit_agent_activity(
+    *,
+    event: str,
+    run_id: str,
+    agent: str,
+    action: str,
+    status: str,
+    step: Optional[int] = None,
+) -> None:
+    """Emit a lightweight activity span for orchestration/tool lifecycle events."""
+    foundry_agent_id = settings.foundry_agent_ids.get(agent)
+    from ..identity import identity_for
+
+    identity = identity_for(agent)
+    attrs = {
+        "event": event,
+        "run_id": run_id,
+        "agent": agent,
+        "agent.id": foundry_agent_id or agent,
+        "agent.identity.client_id": identity.client_id or "",
+        "agent.identity.role": identity.app_role,
+        "action": action,
+        "status": status,
+    }
+    if step is not None:
+        attrs["step"] = step
+    with start_span(f"agent.activity.{event}", attributes=attrs):
+        return

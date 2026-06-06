@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # ---- API Management (agpoc-apim-dev) -----------------------------------
     apim_base_url: str = "https://agpoc-apim-dev.azure-api.net/tools"
     apim_subscription_key: str = ""
+    # Optional OAuth scope for APIM tool-bridge bearer token validation.
+    # If omitted, registry derives ``api://{ENTRA_TOOL_BRIDGE_CLIENT_ID}/.default``.
+    apim_token_scope: str = ""
 
     # ---- Azure AI Search (agpoc-search-dev) --------------------------------
     azure_search_endpoint: str = "https://agpoc-search-dev.search.windows.net"
@@ -75,8 +78,10 @@ class Settings(BaseSettings):
     servicebus_hitl_queue: str = "hitl-approvals"
 
     # ---- Entra ID workload identity ----------------------------------------
-    azure_tenant_id: str = ""
-    entra_orchestrator_client_id: str = ""
+    azure_tenant_id: str = os.getenv("AZURE_TENANT_ID", "")
+    # Fallback to AZURE_CLIENT_ID so Container Apps UAMI works without a
+    # duplicate ENTRA_ORCHESTRATOR_CLIENT_ID env var.
+    entra_orchestrator_client_id: str = os.getenv("ENTRA_ORCHESTRATOR_CLIENT_ID", os.getenv("AZURE_CLIENT_ID", ""))
     entra_tool_bridge_client_id: str = ""
     entra_ui_client_id: str = ""
 
@@ -113,7 +118,7 @@ class Settings(BaseSettings):
     foundry_project_name: str = ""
 
     # ---- Data paths --------------------------------------------------------
-    data_dir: str = "../data"
+    data_dir: str = "data"
 
     # ---- Derived helpers ---------------------------------------------------
     @property

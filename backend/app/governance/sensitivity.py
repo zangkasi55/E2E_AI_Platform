@@ -22,6 +22,7 @@ from functools import lru_cache
 from typing import Any
 
 from ..config import settings
+from ..identity import get_credential
 
 # MIP-style labels, ordered most → least sensitive. Order matters for the
 # heuristic because "highly confidential" also contains "confidential".
@@ -93,12 +94,11 @@ def _live_label(file_name: str) -> dict[str, Any] | None:
     if settings.mock_mode or not settings.purview_catalog_endpoint:
         return None
     try:  # pragma: no cover - exercised only in live mode
-        from azure.identity import DefaultAzureCredential
         from azure.purview.datamap import DataMapClient  # type: ignore
 
         client = DataMapClient(
             endpoint=settings.purview_catalog_endpoint,
-            credential=DefaultAzureCredential(),
+            credential=get_credential(),
         )
         # The data-plane search returns catalog assets whose classifications /
         # sensitivity labels are surfaced via Purview Information Protection.

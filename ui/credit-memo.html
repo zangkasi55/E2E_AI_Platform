@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -118,13 +118,19 @@
   .hitlbar .hh{display:flex;align-items:center;gap:10px;font-weight:700;color:#8A4400;margin-bottom:6px}
   .hitlbar .dot{width:10px;height:10px;border-radius:50%;background:var(--obs);animation:blink 1s infinite}
   .hitlbar p{margin:0 0 12px;font-size:13px;color:#5b4630}
+  .hitlbar label{display:block;font-size:12px;color:#7B6145;font-weight:700;margin:0 0 6px}
+  .hitlbar textarea{width:100%;min-height:72px;border:1px solid #E3C8A8;border-radius:8px;padding:8px 10px;
+    font:inherit;color:#4B3E2F;background:#fff;resize:vertical;margin:0 0 8px}
+  .hitlbar textarea:focus{outline:2px solid #f0c89f;outline-offset:0}
+  .hitlbar .err{display:none;font-size:12px;color:#A12222;font-weight:700;margin:0 0 10px}
+  .hitlbar .err.show{display:block}
   .hitlbar .acts{display:flex;gap:10px;flex-wrap:wrap}
   button.approve{background:var(--ok);border-color:var(--ok);color:#fff}
   button.approve:hover{background:#256B2A}
-  button.edits{background:#fff;border-color:#E3B98A;color:#8A4400}
-  .editsnote{display:none;margin-top:10px;font-size:12.5px;color:#8A4400;background:#FDEFE0;
+  button.reject{background:#fff;border-color:#E3B98A;color:#8A4400}
+  .decisionnote{display:none;margin-top:10px;font-size:12.5px;color:#8A4400;background:#FDEFE0;
     border:1px dashed #E3B98A;border-radius:8px;padding:8px 10px}
-  .editsnote.show{display:block}
+  .decisionnote.show{display:block}
 
   /* ---- Right column ---- */
   .token{display:flex;flex-direction:column;gap:10px}
@@ -155,6 +161,12 @@
 
   @media (max-width:980px){.layout{grid-template-columns:1fr}}
 </style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:Product_x0020_category msdt:dt="string">Not found</mso:Product_x0020_category>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
 </head>
 <body>
 <div class="topbar">
@@ -216,12 +228,14 @@
         <div class="hh"><span class="dot"></span> Awaiting human approval (Durable Functions HITL)</div>
         <p>The draft memo is routed to a reviewer in Teams. <b>Agent drafts, human decides.</b> No memo is final
           without approval.</p>
+        <label for="reviewerNote">Reviewer note (required for reject, optional for approve)</label>
+        <textarea id="reviewerNote" placeholder="Enter reviewer reason or note..."></textarea>
+        <div class="err" id="reviewerErr">Please provide a rejection reason.</div>
         <div class="acts">
           <button class="btn approve" id="approveBtn">✓ Approve &amp; finalize</button>
-          <button class="btn edits" id="editsBtn">✎ Request edits</button>
+          <button class="btn reject" id="rejectBtn">✕ Reject</button>
         </div>
-        <div class="editsnote" id="editsNote">Reviewer requested edits to the <b>Risk</b> section. The draft is
-          returned to <code>memo_assembler</code> in a real run; for this demo, Approve to finalize the audited memo.</div>
+        <div class="decisionnote" id="decisionNote"></div>
       </div>
     </div>
   </section>
@@ -388,7 +402,8 @@
       resetBtn=document.getElementById("resetBtn"), statusTxt=document.getElementById("statusTxt"),
       stepIdx=document.getElementById("stepIdx"), phaseLabel=document.getElementById("phaseLabel");
   var hitlBar=document.getElementById("hitlBar"), approveBtn=document.getElementById("approveBtn"),
-      editsBtn=document.getElementById("editsBtn"), editsNote=document.getElementById("editsNote");
+      rejectBtn=document.getElementById("rejectBtn"), decisionNote=document.getElementById("decisionNote"),
+      reviewerNote=document.getElementById("reviewerNote"), reviewerErr=document.getElementById("reviewerErr");
   var activeNode=null, playing=false;
 
   function markActive(nodeId){
@@ -434,7 +449,13 @@
     auditCount.textContent="0 records";
     stepCard.innerHTML='<div class="sb"><div class="empty">Press <b>Play run</b> to start the simulated orchestration.</div></div>';
     stepIdx.textContent="0"; statusTxt.textContent="ready"; phaseLabel.textContent="idle";
-    hitlBar.classList.remove("show"); editsNote.classList.remove("show");
+    hitlBar.classList.remove("show");
+    decisionNote.classList.remove("show");
+    decisionNote.textContent="";
+    reviewerNote.value="";
+    reviewerErr.classList.remove("show");
+    approveBtn.disabled=false;
+    rejectBtn.disabled=false;
     playBtn.disabled=false; stepBtn.disabled=false; playBtn.textContent="▶ Play run"; playing=false;
   });
 
@@ -446,13 +467,33 @@
   resetBtn.addEventListener("click", function(){ player.reset(); });
 
   approveBtn.addEventListener("click", function(){
+    var note = reviewerNote.value.trim();
+    reviewerErr.classList.remove("show");
     hitlBar.classList.remove("show");
     setNodeState("hitl","done");
+    decisionNote.innerHTML = note
+      ? ('Approved by reviewer. Note: <b>'+note.replace(/</g,"&lt;")+'</b>')
+      : 'Approved by reviewer.';
+    decisionNote.classList.add("show");
+    pushAudit('HITL decision=APPROVE' + (note ? (' · reviewer_note=' + note) : ''));
     statusTxt.textContent="approved · finalizing";
     playBtn.disabled=true; stepBtn.disabled=true;
     player.resume(); // resumes Durable Functions → final step
   });
-  editsBtn.addEventListener("click", function(){ editsNote.classList.add("show"); });
+  rejectBtn.addEventListener("click", function(){
+    var note = reviewerNote.value.trim();
+    if(!note){ reviewerErr.classList.add("show"); return; }
+    reviewerErr.classList.remove("show");
+    setNodeState("hitl","done");
+    decisionNote.innerHTML = 'Rejected by reviewer. Reason: <b>'+note.replace(/</g,"&lt;")+'</b>';
+    decisionNote.classList.add("show");
+    pushAudit('HITL decision=REJECT · reviewer_reason=' + note);
+    statusTxt.textContent="rejected";
+    approveBtn.disabled=true;
+    rejectBtn.disabled=true;
+    playBtn.disabled=true;
+    stepBtn.disabled=true;
+  });
 })();
 </script>
 </body>

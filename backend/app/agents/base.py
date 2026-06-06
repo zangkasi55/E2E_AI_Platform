@@ -85,6 +85,11 @@ class Agent:
         #     and a provisioned agent id exists for this agent.
         #   * Direct Azure OpenAI chat when ``live_llm`` is set.
         #   * Deterministic mock otherwise.
+        if settings.use_foundry_agents and settings.foundry_project_endpoint and self.name not in settings.foundry_agent_ids:
+            raise RuntimeError(
+                f"Foundry mode is enabled but no AgentID is configured for '{self.name}'. "
+                "Re-run backend/scripts/provision_foundry_agents.py and deploy backend/app/foundry_agent_ids.json."
+            )
         foundry_agent_id = (
             settings.foundry_agent_ids.get(self.name)
             if (settings.use_foundry_agents and settings.foundry_project_endpoint)
@@ -104,6 +109,9 @@ class Agent:
             model=self.model,
             use_case=self.use_case,
             run_id=run_id,
+            agent_id=foundry_agent_id or self.name,
+            identity_client_id=self.identity.client_id,
+            identity_role=self.identity.app_role,
         ):
             if foundry_agent_id:
                 completion_text, usage = self._call_foundry_agent(

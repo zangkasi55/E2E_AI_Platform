@@ -11,6 +11,7 @@ In MOCK_MODE we never construct a real credential — callers should branch on
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Optional
 
 from .config import settings
@@ -64,11 +65,17 @@ def get_credential():
         )
     # TODO(copilot): In Container Apps this resolves the user-assigned managed
     # identity. Locally it falls back to az-cli / VS Code / env credentials.
-    from azure.identity import DefaultAzureCredential  # type: ignore
+    from azure.identity import DefaultAzureCredential, ManagedIdentityCredential  # type: ignore
 
-    return DefaultAzureCredential(
-        managed_identity_client_id=settings.entra_orchestrator_client_id or None
-    )
+    client_id = settings.entra_orchestrator_client_id or os.getenv("AZURE_CLIENT_ID") or None
+
+    # In live mode, force ManagedIdentityCredential so every agent path uses
+    # the configured AgentID/UAMI instead of local/dev credential fallbacks.
+    if settings.live_active:
+        return ManagedIdentityCredential(client_id=client_id)
+
+    # Local dev / CI fallback chain.
+    return DefaultAzureCredential(managed_identity_client_id=client_id)
 
 
 def identity_for(agent: str) -> AgentIdentity:
@@ -77,3 +84,10 @@ def identity_for(agent: str) -> AgentIdentity:
         agent,
         AgentIdentity(agent, "entra_orchestrator_client_id", "orchestrator"),
     )
+
+
+def validate_foundry_agent_id_coverage() -> list[str]:
+    """Return logical agent names missing a Foundry AgentID mapping."""
+    required = set(AGENT_IDENTITIES.keys())
+    mapped = set(settings.foundry_agent_ids.keys())
+    return sorted(required - mapped)

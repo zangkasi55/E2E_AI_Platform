@@ -1,0 +1,22 @@
+{
+  "_comment": "Synthetic Microsoft Purview sensitivity-label catalog used by the credit-memo Purview/DSPM gate in MOCK_MODE. In live mode the label is resolved from the Microsoft Purview / Information Protection SDK instead. file_name -> assigned label. Labels 'Confidential' and 'Highly Confidential' are blocked from agent ingestion.",
+  "blocked_labels": ["Confidential", "Highly Confidential"],
+  "labels": {
+    "Siam-Lotus-Board-Resolution-HIGHLY-CONFIDENTIAL.txt": {
+      "label": "Highly Confidential",
+      "label_id": "9f8c7b6a-5d4e-4c3b-2a1f-0e9d8c7b6a5f",
+      "full_name": "Highly Confidential \\ Board & Legal",
+      "color": "#a4262c",
+      "protected": true,
+      "source": "purview_catalog"
+    },
+    "credit-file-APP-1001-siam-lotus-foods.txt": {
+      "label": "General",
+      "label_id": "1a2b3c4d-0000-4a5b-9c8d-7e6f5a4b3c2d",
+      "full_name": "General \\ Internal Business",
+      "color": "#107c10",
+      "protected": false,
+      "source": "purview_catalog"
+    }
+  }
+}

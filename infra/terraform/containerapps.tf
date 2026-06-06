@@ -94,6 +94,18 @@ resource "azurerm_container_app" "orchestrator" {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.appi.connection_string
       }
+      env {
+        name  = "USE_FOUNDRY_AGENTS"
+        value = "true"
+      }
+      env {
+        name  = "FOUNDRY_PROJECT_ENDPOINT"
+        value = "https://${azurerm_cognitive_account.foundry.name}.services.ai.azure.com/api/projects/${var.foundry_project_name}"
+      }
+      env {
+        name  = "FOUNDRY_PROJECT_NAME"
+        value = var.foundry_project_name
+      }
     }
 
     http_scale_rule {
