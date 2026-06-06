@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  RESOURCE_GROUP: rg-agentic-poc-sea
+  RESOURCE_GROUP: rg-agentic-poc-swc
   ACA_APP: agpoc-aca-orch-dev
   IMAGE_NAME: orchestrator
 
