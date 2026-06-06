@@ -67,6 +67,7 @@ function mapTraceStep(step: {
     result: step.status,
     audit: `${step.action} (${step.status})`,
     phase,
+    hitl: phase === "hitl",
     tool: toolName,
     params: {
       ...(step.input ?? {}),
