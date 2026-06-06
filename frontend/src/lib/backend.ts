@@ -70,4 +70,6 @@ export interface Backend {
 }
 
 export const USE_MOCK = String(import.meta.env.VITE_USE_MOCK ?? "true") !== "false";
-export const API_BASE = String(import.meta.env.VITE_API_BASE_URL ?? "");
+const DEFAULT_API_BASE = "https://agpoc-aca-orch-dev.purplebush-679f865f.swedencentral.azurecontainerapps.io";
+const configuredApiBase = String(import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE).trim();
+export const API_BASE = configuredApiBase.endsWith("/") ? configuredApiBase.slice(0, -1) : configuredApiBase;
