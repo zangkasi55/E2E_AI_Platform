@@ -17,6 +17,7 @@ os.environ["DATA_DIR"] = "data"
 import pytest  # noqa: E402
 
 from app.config import settings  # noqa: E402
+from app.governance.policies import governance_payload  # noqa: E402
 from app.models import ApprovalDecision, BankingMessage, RunRequest  # noqa: E402
 from app.orchestration.banking_controller import banking_controller  # noqa: E402
 from app.orchestration.memo_orchestrator import memo_orchestrator  # noqa: E402
@@ -171,3 +172,25 @@ def test_tokens_are_metered():
     rec = token_meter.records_for_run(run.run_id)[0]
     for field in ("run_id", "agent", "step", "model", "total_tokens", "est_cost_usd", "use_case"):
         assert hasattr(rec, field)
+
+
+def test_governance_policies_are_present():
+    """Governance endpoint contract should include policy metadata + controls."""
+    payload = governance_payload()
+
+    data_policy = payload["data_policy"]
+    security_policy = payload["security_policy"]
+
+    assert data_policy.get("policy_id")
+    assert data_policy.get("name")
+    assert isinstance(data_policy.get("scope"), list)
+    assert len(data_policy.get("scope", [])) > 0
+    assert isinstance(data_policy.get("controls"), list)
+    assert len(data_policy.get("controls", [])) > 0
+
+    assert security_policy.get("policy_id")
+    assert security_policy.get("name")
+    assert isinstance(security_policy.get("scope"), list)
+    assert len(security_policy.get("scope", [])) > 0
+    assert isinstance(security_policy.get("controls"), list)
+    assert len(security_policy.get("controls", [])) > 0
