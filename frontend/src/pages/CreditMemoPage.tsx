@@ -350,7 +350,9 @@ export function CreditMemoPage() {
               <h2>Current step</h2>
               <ToolCallCard step={c} />
             </div>
+          </div>
 
+          <aside className="col">
             <HITLApprovalBar
               active={player.status === "awaiting_approval"}
               resolved={!!player.hitlDecision && (player.status === "done" || player.status === "blocked")}
@@ -360,9 +362,6 @@ export function CreditMemoPage() {
               onApprove={player.approve}
               onReject={player.reject}
             />
-          </div>
-
-          <aside className="col">
             <DspmEventsPanel compact />
             <div className="panel">
               <div className="rail-h">Token usage · live</div>
