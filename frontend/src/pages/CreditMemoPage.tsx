@@ -144,12 +144,12 @@ export function CreditMemoPage() {
   const approvalGuidance = (c?.params as { approval_guidance?: { recommendation?: string; should_approve?: string[]; should_not_approve?: string[] } } | undefined)?.approval_guidance;
 
   useEffect(() => {
-    if (pendingPlay.current && run) {
-      pendingPlay.current = false;
-      player.play();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run?.run_id]);
+    // Avoid a race: run state may be set before useRunPlayer has consumed it.
+    if (!pendingPlay.current || !run) return;
+    if (player.run?.run_id !== run.run_id) return;
+    pendingPlay.current = false;
+    player.play();
+  }, [run?.run_id, player.run?.run_id, player.status]);
 
   const handlePlay = () => {
     if (!attachedFile) return;
