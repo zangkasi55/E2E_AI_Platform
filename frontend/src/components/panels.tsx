@@ -24,6 +24,7 @@ export function RunControls({
   onStep,
   onReset,
   disabled,
+  allowReplayTerminal,
 }: {
   status: RunStatus;
   onPlay(): void;
@@ -31,11 +32,13 @@ export function RunControls({
   onStep(): void;
   onReset(): void;
   disabled?: boolean;
+  allowReplayTerminal?: boolean;
 }) {
   const playing = status === "playing";
   const terminal = status === "done" || status === "blocked";
   const gated = status === "awaiting_approval";
   const shouldDisable = !!disabled;
+  const disablePlay = (terminal && !allowReplayTerminal) || gated || shouldDisable;
   return (
     <div className="controls">
       {playing ? (
@@ -43,7 +46,7 @@ export function RunControls({
           ⏸ Pause
         </button>
       ) : (
-        <button className="btn primary" onClick={onPlay} disabled={terminal || gated || shouldDisable}>
+        <button className="btn primary" onClick={onPlay} disabled={disablePlay}>
           ▶ Play
         </button>
       )}

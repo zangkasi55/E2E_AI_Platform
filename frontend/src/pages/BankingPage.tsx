@@ -149,6 +149,14 @@ export function BankingPage() {
         prompt: submittedMessage,
         user: `${plan.sender.alias}@scbx.local`,
       });
+      // In live mode, also execute the backend guardrail path so the DSPM
+      // panel (which polls /api/governance/dspm-events) receives the risky
+      // prompt event from the server-side Purview audit sink.
+      void backend
+        .getRun("banking_blocked", { bankingMessage: submittedMessage })
+        .catch(() => {
+          // Keep UI playback resilient even if backend telemetry write fails.
+        });
       setTxns((prev) => [
         { id: plan.handoffId, ts, fromAlias, toAlias, amount: amt, status: "blocked", note: "Blocked — unsafe instruction rejected by guardrails." },
         ...prev,
@@ -243,6 +251,7 @@ export function BankingPage() {
                   onPause={player.pause}
                   onStep={player.step}
                   onReset={player.reset}
+                  allowReplayTerminal
                 />
               </div>
               <label className="unsafe">

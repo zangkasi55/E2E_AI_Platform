@@ -32,7 +32,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Precheck deployment variables
+        id: precheck
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ACR_NAME: ${{ vars.ACR_NAME }}
+        run: |
+          missing=()
+          [ -n "$AZURE_CLIENT_ID" ] || missing+=("AZURE_CLIENT_ID")
+          [ -n "$AZURE_TENANT_ID" ] || missing+=("AZURE_TENANT_ID")
+          [ -n "$AZURE_SUBSCRIPTION_ID" ] || missing+=("AZURE_SUBSCRIPTION_ID")
+          [ -n "$ACR_NAME" ] || missing+=("ACR_NAME")
+
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "deploy_enabled=true" >> "$GITHUB_OUTPUT"
+            echo "All required variables are set. Deployment will run." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "deploy_enabled=false" >> "$GITHUB_OUTPUT"
+            echo "## Deployment skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Missing repo variables: ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
+            echo "Set these values in GitHub repository Variables when you are ready to deploy." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Azure login (OIDC)
+        if: steps.precheck.outputs.deploy_enabled == 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -45,6 +70,7 @@ jobs:
 
       # ACR build keeps the runner thin — no local Docker needed.
       - name: ACR build + push
+        if: steps.precheck.outputs.deploy_enabled == 'true'
         run: |
           az acr build \
             --registry ${{ vars.ACR_NAME }} \
@@ -53,6 +79,7 @@ jobs:
             ./backend
 
       - name: Deploy image to Container Apps
+        if: steps.precheck.outputs.deploy_enabled == 'true'
         run: |
           az containerapp update \
             --name ${{ env.ACA_APP }} \
@@ -60,6 +87,7 @@ jobs:
             --image ${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
 
       - name: Show app FQDN
+        if: steps.precheck.outputs.deploy_enabled == 'true'
         run: |
           fqdn=$(az containerapp show -n ${{ env.ACA_APP }} -g ${{ env.RESOURCE_GROUP }} \
                  --query properties.configuration.ingress.fqdn -o tsv)
