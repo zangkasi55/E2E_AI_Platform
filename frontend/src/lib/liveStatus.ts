@@ -87,7 +87,7 @@ export async function probeLiveStatus(): Promise<LiveStatusReport> {
         ? pass(6, "EntraID security policy showcase", `${gov.security_policy.policy_id} · ${secControls} controls · ${gov.security_policy.platform}`)
         : fail(6, "EntraID security policy showcase"),
       guardrail.configured && blockedStep
-        ? pass(7, "AI Foundry guardrail policy reference in UI", `${guardrail.provider} · ${guardrail.policy_id} · mode=${guardrail.mode} · block path verified`)
+        ? pass(7, "AI Foundry guardrail policy reference in UI", `${guardrail.provider} · ${guardrail.policy_id || guardrail.policy_name} · mode=${guardrail.mode} · block path verified`)
         : fail(7, "AI Foundry guardrail policy reference in UI"),
       {
         id: 8,

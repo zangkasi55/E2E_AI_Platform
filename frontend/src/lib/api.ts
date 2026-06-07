@@ -135,7 +135,7 @@ export const apiBackend: Backend = {
     }
 
     const bankingMessage = options?.bankingMessage?.trim() || BANKING_PROMPTS[key as "banking" | "banking_blocked"];
-    const banking = await http<{ run_id: string; outcome: string; message: string; steps: Array<{ step: number; agent: string; action: string; status: string; input?: Record<string, unknown>; output?: Record<string, unknown>; note?: string }>; handoff?: Record<string, unknown> }>("/api/banking/message", {
+    const banking = await http<{ run_id: string; outcome: string; message: string; steps: Array<{ step: number; agent: string; action: string; status: string; input?: Record<string, unknown>; output?: Record<string, unknown>; note?: string }>; handoff?: { handoff_id?: string; intent?: string; slots?: Record<string, unknown>; policy_result?: { eligible?: boolean }; payee_name?: string } }>("/api/banking/message", {
       method: "POST",
       body: JSON.stringify({
         user_id: "USR-001",
@@ -143,11 +143,36 @@ export const apiBackend: Backend = {
         message: bankingMessage,
       }),
     });
+    // UC2 control-boundary annotation: natural-language intent reasoning runs in
+    // the probabilistic zone; every tool call crosses the deterministic boundary
+    // (APIM scope check + Policy Decision Point). The agent never moves money —
+    // it emits an auditable handoff object requiring confirmation + step-up auth.
+    const PROBABILISTIC_ACTIONS = new Set(["plan", "decompose_intent", "evaluate_condition"]);
+    const h = banking.handoff;
+    const steps = banking.steps.map((raw) => {
+      const mapped = mapTraceStep(raw);
+      mapped.zone = PROBABILISTIC_ACTIONS.has(raw.action) ? "prob" : "det";
+      if (raw.action === "request_transaction_handoff" && h) {
+        const payeeAlias = h.slots?.payee_alias;
+        mapped.handoff = {
+          handoff_id: h.handoff_id ?? "",
+          intent: h.intent ?? bankingMessage,
+          slots: h.slots ?? {},
+          policy_result: h.policy_result?.eligible === false ? "deny" : "permit",
+          requires_confirmation: true,
+          requires_step_up_auth: true,
+          money_moved: false,
+          tool_trace: [],
+          ...(typeof payeeAlias === "string" ? { payee_name: payeeAlias } : {}),
+        };
+      }
+      return mapped;
+    });
     return {
       run_id: banking.run_id,
       use_case: "banking",
       message: bankingMessage,
-      steps: banking.steps.map(mapTraceStep),
+      steps,
     };
   },
 
