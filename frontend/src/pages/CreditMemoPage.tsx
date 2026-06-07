@@ -113,7 +113,7 @@ export function CreditMemoPage() {
     setShowPreview(true);
   };
 
-  const fetchRun = (file: File, reason: "init" | "file-change" | "play" | "play-fallback") => {
+  const fetchRun = (file: File, reason: "init" | "file-change" | "play" | "play-fallback" | "reset") => {
     const seq = ++runLoadSeq.current;
     const source = reason === "play-fallback" ? "sample" : file === DEFAULT_DR_FILE ? "sample" : "uploaded";
     setRunLoadState("loading");
@@ -220,6 +220,16 @@ export function CreditMemoPage() {
     player.play();
   };
 
+  // Reset clears the run player AND any page-level Purview policy block. The
+  // block lives on the run object (not the player), so player.reset() alone
+  // would leave the controls disabled and the block banner up — making Reset
+  // look like a no-op. Re-fetching a clean run for the attached file unblocks.
+  const handleReset = () => {
+    player.reset();
+    setAttachError(null);
+    if (run?.policyBlock) void fetchRun(attachedFile, "reset");
+  };
+
   return (
     <AppShell
       hero={{
@@ -243,7 +253,7 @@ export function CreditMemoPage() {
                 onPlay={handlePlay}
                 onPause={player.pause}
                 onStep={player.step}
-                onReset={player.reset}
+                onReset={handleReset}
                 disabled={!!run?.policyBlock}
                 allowReplayTerminal
               />

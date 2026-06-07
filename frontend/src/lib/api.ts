@@ -8,7 +8,7 @@ import type { Backend } from "./backend";
 import { API_BASE } from "./backend";
 import type { GetRunOptions, GovernancePayload } from "./backend";
 import type { DspmEvent } from "./dspmEvents";
-import type { RunDef, RunKey, Step, TokenRecord, ToolName, UseCase } from "../types";
+import type { ModelId, RunDef, RunKey, Step, StepTokens, TokenRecord, ToolName, UseCase } from "../types";
 
 // Map UI run keys → orchestrator start payloads.
 const RUN_KEY_TO_PAYLOAD: Record<RunKey, { use_case: UseCase; variant?: string }> = {
@@ -78,6 +78,48 @@ function mapTraceStep(step: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Per-step token usage. The backend StepTrace model does NOT carry token
+// counts; usage is recorded separately as TokenRecord and exposed via
+// /api/tokens/run/{run_id}. We fetch those records and merge them into the
+// mapped steps (keyed by step number) so useRunPlayer can accumulate the live
+// Token Counter exactly like the mock data path does.
+// ---------------------------------------------------------------------------
+type StepTokenInfo = { model: ModelId; tokens: StepTokens };
+
+async function fetchStepTokens(runId: string): Promise<Map<number, StepTokenInfo>> {
+  const byStep = new Map<number, StepTokenInfo>();
+  try {
+    const data = await http<{ records?: Array<{ step: number; model: string; prompt_tokens: number; completion_tokens: number }> }>(
+      `/api/tokens/run/${runId}`,
+    );
+    for (const r of data.records ?? []) {
+      const existing = byStep.get(r.step);
+      if (existing) {
+        existing.tokens.prompt += r.prompt_tokens;
+        existing.tokens.completion += r.completion_tokens;
+      } else {
+        byStep.set(r.step, {
+          model: r.model as ModelId,
+          tokens: { prompt: r.prompt_tokens, completion: r.completion_tokens },
+        });
+      }
+    }
+  } catch {
+    // Token records are best-effort; the meter simply stays empty if absent.
+  }
+  return byStep;
+}
+
+function withStepTokens(step: Step, byStep: Map<number, StepTokenInfo>): Step {
+  const info = byStep.get(step.step);
+  if (info) {
+    step.model = info.model;
+    step.tokens = info.tokens;
+  }
+  return step;
+}
+
 // Placeholder bearer-token getter. Replace with MSAL acquireTokenSilent for the
 // agpoc-ui app registration (VITE_ENTRA_CLIENT_ID / VITE_ENTRA_TENANT_ID).
 async function authHeader(): Promise<Record<string, string>> {
@@ -109,6 +151,7 @@ export const apiBackend: Backend = {
         }),
       });
       const trace = await http<{ steps: Array<{ step: number; agent: string; action: string; status: string; input?: Record<string, unknown>; output?: Record<string, unknown>; note?: string }> }>(`/api/runs/${run.run_id}/trace`);
+      const tokensByStep = await fetchStepTokens(run.run_id);
       const pb = run.policy_block as
         | { label?: string; label_full_name?: string; file_name?: string; justification?: string; source?: string; dspm_event_id?: string }
         | null
@@ -117,7 +160,7 @@ export const apiBackend: Backend = {
         run_id: run.run_id,
         use_case: "credit_memo",
         applicant: applicantId,
-        steps: trace.steps.map(mapTraceStep),
+        steps: trace.steps.map((s) => withStepTokens(mapTraceStep(s), tokensByStep)),
         ...(pb
           ? {
               policyBlock: {
@@ -149,8 +192,9 @@ export const apiBackend: Backend = {
     // it emits an auditable handoff object requiring confirmation + step-up auth.
     const PROBABILISTIC_ACTIONS = new Set(["plan", "decompose_intent", "evaluate_condition"]);
     const h = banking.handoff;
+    const bankingTokens = await fetchStepTokens(banking.run_id);
     const steps = banking.steps.map((raw) => {
-      const mapped = mapTraceStep(raw);
+      const mapped = withStepTokens(mapTraceStep(raw), bankingTokens);
       mapped.zone = PROBABILISTIC_ACTIONS.has(raw.action) ? "prob" : "det";
       if (raw.action === "request_transaction_handoff" && h) {
         const payeeAlias = h.slots?.payee_alias;
