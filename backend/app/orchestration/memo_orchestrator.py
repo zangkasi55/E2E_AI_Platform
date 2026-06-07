@@ -706,12 +706,34 @@ class MemoOrchestrator:
             )
             run.status = RunStatus.COMPLETED
         else:
-            run.status = RunStatus.REFUSED
+            # Record the reviewer's rejection at the HITL gate ...
             self._trace(
                 run, step, "memo_orchestrator", "hitl_resume",
                 status=StepStatus.BLOCKED,
                 out={"approved": False, "reviewer": decision.reviewer, "comment": decision.comment},
                 note="Human rejected draft.",
+            )
+            # ... then still run the final audited-memo commit so the DECLINED
+            # outcome is logged to the audit ledger (Cosmos), exactly like an
+            # approval. A reject is a decision that must be recorded, not a hole
+            # in the trail.
+            declined = dict(run.draft_memo or {})
+            declined["status"] = "declined"
+            declined["decision"] = "reject"
+            declined["rejected_by"] = decision.reviewer
+            if decision.comment:
+                declined["reviewer_comment"] = decision.comment
+            run.final_memo = declined
+            run.status = RunStatus.REFUSED
+            self._trace(
+                run, len(run.steps), "memo_orchestrator", "finalize_memo",
+                out={
+                    "decision": "reject",
+                    "status": "declined",
+                    "reviewer": decision.reviewer,
+                    "committed": True,
+                },
+                note="Rejected memo committed to the audit ledger (Cosmos) — decision logged.",
             )
         audit_store.save_run(run)
         return run

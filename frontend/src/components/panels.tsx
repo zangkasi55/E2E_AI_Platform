@@ -137,7 +137,7 @@ export function HITLApprovalBar({
         <p>
           {approved
             ? "Durable Functions resumed. The final memo is committed with a full audit trail."
-            : "The workflow was rejected by human review and moved to a terminal blocked state."}
+            : "The reviewer declined the draft. Durable Functions resumed and the audited decision (DECLINED) was committed to Cosmos with a full audit trail."}
         </p>
         {reason ? (
           <p className="hitl-note-summary">

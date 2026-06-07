@@ -186,11 +186,33 @@ function reducer(state: PlayerState, action: Action): PlayerState {
           text: `HITL decision=REJECT · reviewer_reason=${reason}`,
         },
       ];
+      // A rejection is still a decision that must be recorded: the final
+      // "audited memo" step commits the DECLINED outcome to Cosmos exactly like
+      // an approval. Rewrite the final node to reflect the logged decision,
+      // then let the player advance into it so the node lights up and the
+      // result is captured in the audit trail.
+      let run = state.run;
+      if (run) {
+        const steps = run.steps.map((s) =>
+          s.phase === "final"
+            ? {
+                ...s,
+                title: "memo_orchestrator · finalize_memo (declined)",
+                detail:
+                  "Durable Functions resumes and commits the audited outcome — decision=DECLINED — with the reviewer signature. The rejection is logged; full audit trail persisted to Cosmos.",
+                result: "final",
+                audit: `hitl_resume (declined) · decision=REJECT · reviewer_reason=${reason} · committed`,
+              }
+            : s,
+        );
+        run = { ...run, steps };
+      }
       return {
         ...state,
+        run,
         approved: false,
-        blocked: true,
-        status: "blocked",
+        blocked: false,
+        status: "playing",
         hitlDecision: "rejected",
         hitlReason: reason,
         audit,
