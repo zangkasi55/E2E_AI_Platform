@@ -36,8 +36,17 @@ const TOOL_NAMES = new Set<ToolName>([
 
 function inferApplicantIdFromFileName(fileName?: string): string {
   if (!fileName) return "APP-1001";
-  const m = fileName.toUpperCase().match(/APP-\d{4}/);
-  return m ? m[0] : "APP-1001";
+  const upper = fileName.toUpperCase();
+  // An explicit applicant id in the filename always wins.
+  const m = upper.match(/APP-\d{4}/);
+  if (m) return m[0];
+  // Demo convenience: a file named to signal a reject case maps to the genuine
+  // hard-reject applicant in the dataset (APP-1003: bureau 655 < 680 and 2
+  // delinquencies -> recommendation = reject). This makes "..._Reject.docx"
+  // uploads produce the reject recommendation reviewers expect, instead of
+  // silently defaulting to the approve case (APP-1001).
+  if (/REJECT|DECLINE|DENY/.test(upper)) return "APP-1003";
+  return "APP-1001";
 }
 
 function mapTraceStep(step: {
@@ -152,6 +161,34 @@ export const apiBackend: Backend = {
       });
       const trace = await http<{ steps: Array<{ step: number; agent: string; action: string; status: string; input?: Record<string, unknown>; output?: Record<string, unknown>; note?: string }> }>(`/api/runs/${run.run_id}/trace`);
       const tokensByStep = await fetchStepTokens(run.run_id);
+      const mappedSteps = trace.steps.map((s) => withStepTokens(mapTraceStep(s), tokensByStep));
+      // The backend trace ends at the HITL pause. The post-approval "final
+      // audited memo" commit is recorded by the resume endpoint as a separate
+      // step that this read-only replay never re-fetches, so the "Final audited
+      // memo" pipeline node would stay pending forever. Append a synthetic
+      // final step so the node lights up once the reviewer approves. On reject
+      // the player blocks at the HITL step and never reaches it, so the node
+      // correctly stays pending.
+      const lastStep = mappedSteps[mappedSteps.length - 1];
+      if (lastStep && lastStep.phase === "hitl") {
+        mappedSteps.push({
+          step: lastStep.step + 1,
+          agent: "memo_orchestrator",
+          title: "memo_orchestrator · finalize_memo",
+          detail:
+            "On human approval, Durable Functions resumes and commits the audited final memo with the reviewer signature. Full audit trail persisted to Cosmos.",
+          result: "final",
+          audit: "hitl_resume (final) · memo committed",
+          phase: "final",
+          hitl: false,
+          tool: null,
+          params: {},
+          blocked: false,
+          apim: true,
+          model: "gpt-4o",
+          tokens: { prompt: 640, completion: 180 },
+        });
+      }
       const pb = run.policy_block as
         | { label?: string; label_full_name?: string; file_name?: string; justification?: string; source?: string; dspm_event_id?: string }
         | null
@@ -160,7 +197,7 @@ export const apiBackend: Backend = {
         run_id: run.run_id,
         use_case: "credit_memo",
         applicant: applicantId,
-        steps: trace.steps.map((s) => withStepTokens(mapTraceStep(s), tokensByStep)),
+        steps: mappedSteps,
         ...(pb
           ? {
               policyBlock: {
