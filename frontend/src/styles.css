@@ -1081,6 +1081,17 @@ button {
   color: var(--blocked);
 }
 
+.expect-pill.probing {
+  background: #eef2f7;
+  color: #5b6675;
+  animation: expectProbe 1.2s ease-in-out infinite;
+}
+
+@keyframes expectProbe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 /* ---- Live status bar + chips (Governance / Test Expectations) ----------- */
 .statusbar {
   display: flex;

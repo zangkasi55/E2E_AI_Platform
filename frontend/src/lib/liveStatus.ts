@@ -10,7 +10,7 @@ import { USE_MOCK } from "./backend";
 import type { GovernancePayload } from "./backend";
 import type { Step } from "../types";
 
-export type LiveStatus = "Demonstrated" | "Mocked" | "Documented" | "Unavailable";
+export type LiveStatus = "Demonstrated" | "Mocked" | "Documented" | "Unavailable" | "Probing";
 
 export interface LiveExpectation {
   id: number;
@@ -28,6 +28,47 @@ export interface LiveStatusReport {
 }
 
 const PENDING = "Awaiting probe — press Refresh.";
+
+// Static catalogue of items so the dashboard can render every row immediately
+// (with a Probing status) before any backend payload returns.
+const MIN_EXPECTED_ITEMS: ReadonlyArray<{ id: number; item: string }> = [
+  { id: 1, item: "UC1 credit memo orchestration with HITL approval" },
+  { id: 2, item: "UC2 conversational banking control boundary" },
+  { id: 3, item: "No direct money movement by agent" },
+  { id: 4, item: "APIM tool boundary and traceability" },
+  { id: 5, item: "Purview data policy showcase" },
+  { id: 6, item: "EntraID security policy showcase" },
+  { id: 7, item: "AI Foundry guardrail policy reference in UI" },
+  { id: 8, item: "Production deployment hardening beyond PoC" },
+];
+
+const ASSESSMENT_ITEMS: ReadonlyArray<{ id: number; item: string }> = [
+  { id: 1, item: "Architecture and control pattern clarity" },
+  { id: 2, item: "Token monitoring and cost transparency" },
+  { id: 3, item: "Policy-driven governance visibility" },
+  { id: 4, item: "Live external integrations under tenant constraints" },
+  { id: 5, item: "Release-readiness for production security baseline" },
+];
+
+/**
+ * Skeleton report shown immediately on page load: every expectation and
+ * assessment row is listed with a Probing status while the live backend
+ * payloads are still in flight.
+ */
+export function pendingLiveStatus(): LiveStatusReport {
+  const make = (i: { id: number; item: string }): LiveExpectation => ({
+    id: i.id,
+    item: i.item,
+    status: "Probing",
+    where: "Probing backend for live evidence…",
+  });
+  return {
+    checkedAt: new Date().toISOString(),
+    source: USE_MOCK ? "mock backend" : "live FastAPI",
+    minExpected: MIN_EXPECTED_ITEMS.map(make),
+    assessment: ASSESSMENT_ITEMS.map(make),
+  };
+}
 
 function pass(id: number, item: string, where: string): LiveExpectation {
   return { id, item, status: "Demonstrated", where };

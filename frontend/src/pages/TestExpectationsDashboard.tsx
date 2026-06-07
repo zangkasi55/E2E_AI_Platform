@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "../components/AppShell";
-import { probeLiveStatus } from "../lib/liveStatus";
+import { pendingLiveStatus, probeLiveStatus } from "../lib/liveStatus";
 import type { LiveExpectation, LiveStatus, LiveStatusReport } from "../lib/liveStatus";
 
 function statusClass(status: LiveStatus): string {
   if (status === "Demonstrated") return "expect-pill demonstrated";
   if (status === "Mocked") return "expect-pill mocked";
   if (status === "Documented") return "expect-pill documented";
+  if (status === "Probing") return "expect-pill probing";
   return "expect-pill unavailable";
 }
 
@@ -73,13 +74,17 @@ function ExpectationTable({
 }
 
 export function TestExpectationsDashboard() {
-  const [report, setReport] = useState<LiveStatusReport | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<LiveStatusReport>(() => pendingLiveStatus());
+  const [probed, setProbed] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
     setLoading(true);
     probeLiveStatus()
-      .then((r) => setReport(r))
+      .then((r) => {
+        setReport(r);
+        setProbed(true);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -112,9 +117,11 @@ export function TestExpectationsDashboard() {
             <span className="sub statusbar-when">
               {report?.error
                 ? `Probe failed: ${report.error}`
-                : report
-                  ? `Last checked ${formatTime(report.checkedAt)} · source ${report.source}`
-                  : "Probing backend…"}
+                : loading
+                  ? "Probing backend…"
+                  : probed
+                    ? `Last checked ${formatTime(report.checkedAt)} · source ${report.source}`
+                    : "Probing backend…"}
             </span>
           </div>
           <button className="btn primary" type="button" onClick={refresh} disabled={loading}>
