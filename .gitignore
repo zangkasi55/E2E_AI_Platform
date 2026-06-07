@@ -68,3 +68,6 @@ out/
 coverage/
 .coverage
 htmlcov/
+
+# --- Local deploy scratch ---
+.acr-tag.txt
