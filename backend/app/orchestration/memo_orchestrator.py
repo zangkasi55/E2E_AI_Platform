@@ -43,38 +43,64 @@ def _build_agents() -> dict[str, Agent]:
         "memo_orchestrator": Agent(
             "memo_orchestrator",
             model="gpt-4o",
-            system_prompt="You plan and coordinate sub-agents to draft an SME credit memo. You never finalize without human approval.",
+            system_prompt=(
+                "You plan and coordinate sub-agents to draft an SME credit memo and to "
+                "decide whether the case should be APPROVED or REJECTED. Direct the "
+                "sub-agents to read the attached credit file, verify the figures against "
+                "the verified datasets, and apply the credit policy gates. You never "
+                "finalize without human approval."
+            ),
             use_case=USE_CASE,
         ),
         "doc_retrieval": Agent(
             "doc_retrieval",
             model="gpt-4o-mini",
-            system_prompt="You retrieve and ground statements on approved sources only.",
+            system_prompt=(
+                "You retrieve and ground statements on approved sources only. When an "
+                "attached credit file is provided, extract the applicant identity and the "
+                "key facts it states (requested facility, financial summary, bureau "
+                "findings) and cross-check them against the verified datasets."
+            ),
             use_case=USE_CASE,
         ),
         "financial_ratio": Agent(
             "financial_ratio",
             model="gpt-4o-mini",
             system_prompt=(
-                "You interpret computed financial ratios for a credit audience. "
-                "Apply policy gates strictly: DSCR >= 1.25x and net debt/EBITDA <= 4.0x. "
-                "If DSCR < 1.10x, EBITDA <= 0, or leverage exceeds 4.0x, explicitly flag hard reject."
+                "You are a credit analyst. Interpret the computed financial ratios for a "
+                "credit audience and judge whether the financials support APPROVAL or "
+                "REJECTION. Apply policy gates strictly: DSCR >= 1.25x and net debt/EBITDA "
+                "<= 4.0x and current ratio >= 1.0x and non-negative EBITDA margin. If DSCR "
+                "< 1.10x, EBITDA <= 0, or leverage exceeds 4.0x, explicitly flag a hard "
+                "reject. State which gates pass and which fail, then give a clear "
+                "approve / reject / request-edits view with reasons."
             ),
             use_case=USE_CASE,
         ),
         "bureau_summary": Agent(
             "bureau_summary",
             model="gpt-4o-mini",
-            system_prompt="You summarize a credit-bureau report into risk-relevant findings.",
+            system_prompt=(
+                "You are a credit-bureau analyst. Summarize the bureau report into "
+                "risk-relevant findings and judge whether the credit history supports "
+                "APPROVAL or REJECTION. Apply policy gates strictly: bureau score >= 680 "
+                "and zero delinquencies in the trailing 12 months. A score below 680 or "
+                "any recent delinquency is a hard-reject trigger; state it explicitly with "
+                "the offending values."
+            ),
             use_case=USE_CASE,
         ),
         "memo_assembler": Agent(
             "memo_assembler",
             model="gpt-4o",
             system_prompt=(
-                "You assemble section bodies into a coherent draft credit memo. "
-                "Do not recommend approval when policy gates fail. "
-                "When hard-risk triggers exist, recommendation must be reject."
+                "You assemble section bodies into a coherent draft credit memo AND state a "
+                "final recommendation of approve or reject. Weigh the financial analysis, "
+                "the bureau assessment, and the attached credit file together. Do not "
+                "recommend approval when any policy gate fails. When hard-risk triggers "
+                "exist (DSCR/leverage/EBITDA breach, bureau score < 680, or recent "
+                "delinquencies), the recommendation must be reject, with the specific "
+                "failing gates cited."
             ),
             use_case=USE_CASE,
         ),
@@ -245,6 +271,10 @@ class MemoOrchestrator:
 
         applicant_id = request.applicant_id
         dr_document = request.dr_document.model_dump() if request.dr_document else None
+        # Excerpt of the attached credit file the analysis agents read so the
+        # decision is grounded in the actual case content, not just metadata.
+        doc_content = (dr_document or {}).get("content") or ""
+        doc_excerpt = doc_content[:4000]
         step = 0
 
         # --- Step 0: plan ---------------------------------------------------
@@ -355,7 +385,11 @@ class MemoOrchestrator:
         ratio_agent = self.agents["financial_ratio"].run_step(
             run_id=run.run_id,
             step=step,
-            user_prompt=f"Interpret these ratios for a credit memo: {ratios}",
+            user_prompt=(
+                f"Analyse whether the financials support approve or reject for {applicant_id}. "
+                f"Computed ratios: {ratios}. "
+                + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "No attached document text was provided.")
+            ),
             mock_response=(
                 f"DSCR {ratios.get('dscr')}x, net debt/EBITDA {ratios.get('net_debt_to_ebitda')}x, "
                 f"current ratio {ratios.get('current_ratio')}, EBITDA margin {ratios.get('ebitda_margin_pct')}%, "
@@ -370,7 +404,10 @@ class MemoOrchestrator:
             "calculate_ratios",
             inp={"applicant_id": applicant_id},
             out={**ratios, "verification": ratios_verification},
-            status=StepStatus.OK if ratios_verification["passed"] else StepStatus.BLOCKED,
+            # A failed financial gate is a RISK finding, not a processing error:
+            # the run must continue so the reviewer sees a reject recommendation
+            # at the HITL gate. It is therefore never marked BLOCKED here.
+            status=StepStatus.OK,
         )
 
         # --- Step 3: bureau_summary ----------------------------------------
@@ -379,7 +416,11 @@ class MemoOrchestrator:
         bureau_agent = self.agents["bureau_summary"].run_step(
             run_id=run.run_id,
             step=step,
-            user_prompt=f"Summarize this bureau report: {bureau}",
+            user_prompt=(
+                f"Assess whether the credit history supports approve or reject for {applicant_id}. "
+                f"Bureau report: {bureau}. "
+                + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "No attached document text was provided.")
+            ),
             mock_response=(
                 f"Bureau score {bureau.get('score')} ({bureau.get('score_band')}); "
                 f"{bureau.get('delinquencies_12m')} delinquencies in 12m; {bureau.get('notes')}"
@@ -393,7 +434,10 @@ class MemoOrchestrator:
             "get_bureau_report",
             inp={"applicant_id": applicant_id},
             out={**bureau, "verification": bureau_verification},
-            status=StepStatus.OK if bureau_verification["passed"] else StepStatus.BLOCKED,
+            # A failed bureau gate is a RISK finding (low score / delinquencies),
+            # not a processing error. The run continues to the HITL gate carrying
+            # a reject recommendation instead of halting here.
+            status=StepStatus.OK,
         )
 
         # --- Step 4: memo_assembler ----------------------------------------
@@ -412,12 +456,6 @@ class MemoOrchestrator:
             template_id=request.template_id,
             caller_agent="memo_assembler",
         )
-        self.agents["memo_assembler"].run_step(
-            run_id=run.run_id,
-            step=step,
-            user_prompt=f"Assemble the draft memo from sections for {applicant_id}.",
-            mock_response=f"Assembled draft with {len(draft.get('sections', []))} sections (status=draft).",
-        )
         run.draft_memo = draft
         draft_verification = self._verify_memo_draft(draft)
         approval_guidance = self._build_approval_guidance(
@@ -427,6 +465,21 @@ class MemoOrchestrator:
             draft_verification,
         )
         run.draft_memo["approval_guidance"] = approval_guidance
+        self.agents["memo_assembler"].run_step(
+            run_id=run.run_id,
+            step=step,
+            user_prompt=(
+                f"Assemble the draft credit memo for {applicant_id} and state the final "
+                f"recommendation (approve or reject). Policy-gate outcome: "
+                f"recommendation={approval_guidance['recommendation']}; "
+                f"failing gates={approval_guidance['should_not_approve'] or 'none'}. "
+                + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "")
+            ),
+            mock_response=(
+                f"Assembled draft with {len(draft.get('sections', []))} sections (status=draft); "
+                f"recommendation={approval_guidance['recommendation']}."
+            ),
+        )
         self._trace(
             run,
             step,

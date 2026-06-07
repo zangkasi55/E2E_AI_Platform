@@ -590,6 +590,7 @@ button {
   flex: 0 0 auto;
 }
 .dr-sample-dot.general { background: #107c10; }
+.dr-sample-dot.reject { background: #c98a00; }
 .dr-sample-dot.hc { background: #a4262c; }
 .dr-error {
   margin: 8px 0 0;
@@ -720,6 +721,11 @@ button {
   color: #a4262c;
   background: #fdf3f3;
   border-color: #f3b0b3;
+}
+.dr-sample-tag.reject {
+  color: #8a5d00;
+  background: #fdf6e6;
+  border-color: #f0dca6;
 }
 .dr-doc-view {
   margin: 10px 0 0;

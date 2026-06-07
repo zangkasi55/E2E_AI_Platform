@@ -34,18 +34,17 @@ const TOOL_NAMES = new Set<ToolName>([
   "request_transaction_handoff",
 ]);
 
-function inferApplicantIdFromFileName(fileName?: string): string {
-  if (!fileName) return "APP-1001";
-  const upper = fileName.toUpperCase();
-  // An explicit applicant id in the filename always wins.
-  const m = upper.match(/APP-\d{4}/);
-  if (m) return m[0];
-  // Demo convenience: a file named to signal a reject case maps to the genuine
-  // hard-reject applicant in the dataset (APP-1003: bureau 655 < 680 and 2
-  // delinquencies -> recommendation = reject). This makes "..._Reject.docx"
-  // uploads produce the reject recommendation reviewers expect, instead of
-  // silently defaulting to the approve case (APP-1001).
-  if (/REJECT|DECLINE|DENY/.test(upper)) return "APP-1003";
+// Resolve which applicant's verified file the run grounds on by *reading the
+// document* — not by pattern-matching the filename. The credit file states its
+// own "Applicant ID: APP-####", so we extract that from the document content
+// first. A filename id is only a fallback for legacy uploads. There is no
+// keyword/"reject" mapping: the approve/reject decision is made by the agent +
+// policy engine from the case data, never inferred from the file name.
+function resolveApplicantId(content?: string, fileName?: string): string {
+  const fromContent = content?.toUpperCase().match(/APP-\d{4}/);
+  if (fromContent) return fromContent[0];
+  const fromName = fileName?.toUpperCase().match(/APP-\d{4}/);
+  if (fromName) return fromName[0];
   return "APP-1001";
 }
 
@@ -149,7 +148,7 @@ export const apiBackend: Backend = {
   async getRun(key: RunKey, options?: GetRunOptions): Promise<RunDef> {
     const payload = RUN_KEY_TO_PAYLOAD[key];
     if (payload.use_case === "credit_memo") {
-      const applicantId = inferApplicantIdFromFileName(options?.drDocument?.file_name);
+      const applicantId = resolveApplicantId(options?.drDocument?.content, options?.drDocument?.file_name);
       const run = await http<{ run_id: string; use_case: string; status?: string; policy_block?: Record<string, unknown> | null; steps: unknown[] }>("/api/credit-memo/run", {
         method: "POST",
         body: JSON.stringify({

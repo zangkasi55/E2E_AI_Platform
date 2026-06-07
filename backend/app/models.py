@@ -104,6 +104,10 @@ class RunRequest(BaseModel):
         mime_type: Optional[str] = None
         last_modified_epoch_ms: Optional[int] = None
         uploaded_at: str = Field(default_factory=_utcnow_iso)
+        # Extracted document text. When present, sub-agents analyse the actual
+        # case content (identity, financials, bureau signals) rather than relying
+        # on metadata. Best-effort; binary uploads may carry no usable text.
+        content: Optional[str] = None
 
     applicant_id: str = Field(..., examples=["APP-1001"])
     template_id: str = Field("TMPL-SME-STD-01", examples=["TMPL-SME-STD-01"])

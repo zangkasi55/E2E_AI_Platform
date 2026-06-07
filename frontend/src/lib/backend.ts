@@ -13,6 +13,10 @@ export interface DRDocumentMetadata {
   mime_type?: string;
   last_modified_epoch_ms?: number;
   uploaded_at: string;
+  // Extracted document text. Sent so the backend agent can analyse the actual
+  // case content (identity, financials, bureau signals) instead of relying on
+  // the filename. Best-effort: binary uploads may yield no usable text.
+  content?: string;
 }
 
 export interface GetRunOptions {

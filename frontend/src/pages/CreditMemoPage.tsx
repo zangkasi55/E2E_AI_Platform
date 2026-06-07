@@ -13,6 +13,8 @@ import {
   SAMPLE_DR_FILE_NAME,
   SAMPLE_HC_DOCUMENT,
   SAMPLE_HC_FILE_NAME,
+  SAMPLE_REJECT_DOCUMENT,
+  SAMPLE_REJECT_FILE_NAME,
 } from "../data/sampleDrDocument";
 import { useRunPlayer } from "../hooks/useRunPlayer";
 import { AppShell } from "../components/AppShell";
@@ -38,10 +40,19 @@ const HC_DR_FILE = new File(
   { type: "text/plain", lastModified: Date.now() },
 );
 
+const REJECT_DR_FILE = new File(
+  [SAMPLE_REJECT_DOCUMENT],
+  SAMPLE_REJECT_FILE_NAME,
+  { type: "text/plain", lastModified: Date.now() },
+);
+
 // Pre-built test files the reviewer can switch between: a General-labeled credit
-// file (passes the Purview gate) and a Highly Confidential board document (blocked).
+// file that passes policy (APP-1001 → approve), a General-labeled credit file
+// that breaches policy (APP-1003 → reject), and a Highly Confidential board
+// document the Purview gate blocks before any agent runs.
 const SAMPLE_CONTENT: Record<string, string> = {
   [SAMPLE_DR_FILE_NAME]: SAMPLE_DR_DOCUMENT,
+  [SAMPLE_REJECT_FILE_NAME]: SAMPLE_REJECT_DOCUMENT,
   [SAMPLE_HC_FILE_NAME]: SAMPLE_HC_DOCUMENT,
 };
 
@@ -113,7 +124,7 @@ export function CreditMemoPage() {
     setShowPreview(true);
   };
 
-  const fetchRun = (file: File, reason: "init" | "file-change" | "play" | "play-fallback" | "reset") => {
+  const fetchRun = async (file: File, reason: "init" | "file-change" | "play" | "play-fallback" | "reset") => {
     const seq = ++runLoadSeq.current;
     const source = reason === "play-fallback" ? "sample" : file === DEFAULT_DR_FILE ? "sample" : "uploaded";
     setRunLoadState("loading");
@@ -122,6 +133,18 @@ export function CreditMemoPage() {
         ? "Preparing sample run..."
         : `Preparing run from uploaded file (${file.name})...`,
     );
+    // Read the document text so the backend agent can analyse the actual case
+    // content. Samples use their canned text; uploads read the file (best
+    // effort — binary formats may not yield clean text). Capped to keep the
+    // request small.
+    let content: string | undefined;
+    try {
+      const raw = SAMPLE_CONTENT[file.name] ?? (await file.text());
+      content = raw ? raw.slice(0, 20000) : undefined;
+    } catch {
+      content = undefined;
+    }
+    if (seq !== runLoadSeq.current) return null;
     return backend
       .getRun("credit_memo", {
         drDocument: {
@@ -130,6 +153,7 @@ export function CreditMemoPage() {
           mime_type: file.type || undefined,
           last_modified_epoch_ms: file.lastModified,
           uploaded_at: new Date().toISOString(),
+          content,
         },
       })
       .then((r) => {
@@ -282,6 +306,16 @@ export function CreditMemoPage() {
                 </button>
                 <button
                   type="button"
+                  className={`dr-sample-btn${attachedFile?.name === SAMPLE_REJECT_FILE_NAME ? " active" : ""}`}
+                  onClick={() => selectSample(REJECT_DR_FILE)}
+                  aria-pressed={attachedFile?.name === SAMPLE_REJECT_FILE_NAME ? "true" : "false"}
+                >
+                  <span className="dr-sample-dot reject" aria-hidden />
+                  Reject case
+                  <small>agent recommends reject</small>
+                </button>
+                <button
+                  type="button"
                   className={`dr-sample-btn${attachedFile?.name === SAMPLE_HC_FILE_NAME ? " active" : ""}`}
                   onClick={() => selectSample(HC_DR_FILE)}
                   aria-pressed={attachedFile?.name === SAMPLE_HC_FILE_NAME ? "true" : "false"}
@@ -340,6 +374,8 @@ export function CreditMemoPage() {
                   </button>
                   {attachedFile?.name === SAMPLE_DR_FILE_NAME ? (
                     <span className="dr-sample-tag">APP-1001 · General · credit file</span>
+                  ) : attachedFile?.name === SAMPLE_REJECT_FILE_NAME ? (
+                    <span className="dr-sample-tag reject">APP-1003 · General · reject case</span>
                   ) : attachedFile?.name === SAMPLE_HC_FILE_NAME ? (
                     <span className="dr-sample-tag hc">APP-1001 · Highly Confidential · board resolution</span>
                   ) : null}

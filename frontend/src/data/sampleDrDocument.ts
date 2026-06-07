@@ -162,6 +162,104 @@ Agentic AI Platform PoC (UC1). They do not represent any real person or company.
 `;
 
 // =============================================================================
+// Reject variant — a DIFFERENT applicant (APP-1003 · Chiang Mai Crafted
+// Textiles) whose verified bureau record fails policy (score 655 < 680 and 2
+// delinquencies in 12 months). It carries the General sensitivity label so it
+// passes the Purview gate and the agent runs end-to-end, analyses the case, and
+// reaches the human-approval gate with a *reject* recommendation. The outcome is
+// driven by the case data the agent reviews — never by the file name.
+// =============================================================================
+
+export const SAMPLE_REJECT_FILE_NAME = "credit-file-APP-1003-chiang-mai-crafted-textiles.txt";
+
+export const SAMPLE_REJECT_DOCUMENT = `SME CREDIT FACILITY — APPLICATION & CREDIT FILE
+Document type: Document Intake (DR) package
+Bank reference: DR-APP-1003-2026-06
+Date received: 1 June 2026
+Relationship Manager: Wirote T. (SME Banking, Northern Region)
+Classification: Confidential — Credit Use Only · SYNTHETIC TEST DATA
+
+============================================================
+1. APPLICANT IDENTIFICATION
+------------------------------------------------------------
+Applicant ID            : APP-1003
+Legal name              : Chiang Mai Crafted Textiles Ltd., Part.
+Company registration no.: 0503560000033
+Registered address      : 145 Moo 6, Nong Khwai, Hang Dong, Chiang Mai 50230
+Year established         : 2011
+Sector                  : Textiles & Apparel (handcrafted & export apparel)
+Employees               : 120
+Ownership               : Limited partnership — founding family 100%
+Authorised directors    : Mr. Decha Inthanon (MD), Ms. Pranee Inthanon (Finance)
+
+============================================================
+2. FACILITY REQUESTED
+------------------------------------------------------------
+Requested amount   : THB 8,000,000
+Purpose            : Inventory financing for the export season
+Facility structure : THB 8,000,000 revolving working-capital line
+Tenor              : 36 months (revolving, reviewed annually)
+Collateral offered : Inventory floating charge + personal guarantee of MD
+
+============================================================
+3. FINANCIAL SUMMARY (3-YEAR, AUDITED) — THB
+------------------------------------------------------------
+Line item            FY2023         FY2024         FY2025
+Revenue          142,000,000    138,000,000    151,000,000
+COGS             116,000,000    115,000,000    123,000,000
+EBITDA            12,100,000     10,400,000     13,900,000
+Net income         4,900,000      3,600,000      5,400,000
+Total debt        39,000,000     41,000,000     43,000,000
+Interest expense   2,300,000      2,500,000      2,600,000
+Cash               6,500,000      5,200,000      7,100,000
+Equity            39,000,000     36,000,000     40,000,000
+Current assets    61,000,000     59,000,000     64,000,000
+Current liab.     47,000,000     49,000,000     50,000,000
+
+Derived metrics (FY2025):
+  - EBITDA margin ................... ~9.2%
+  - Net debt (total debt - cash) .... THB 35,900,000
+  - Net debt / EBITDA ............... ~2.58x
+  - Current ratio ................... ~1.28x
+  - EBITDA dipped in FY2024 before partially recovering in FY2025; revenue is
+    flat-to-volatile and margins are thin for the sector.
+
+============================================================
+4. CREDIT BUREAU REPORT (SUMMARY)
+------------------------------------------------------------
+Bureau              : NCB-SYNTHETIC
+Pulled date         : 28 May 2026
+Score               : 655  (Band B — Moderate Risk)
+Total outstanding   : THB 43,000,000
+Active accounts     : 5
+Delinquencies (12m) : 2
+Worst status (36m)  : 60 DPD (2024-Q4)
+Inquiries (6m)      : 4
+Notes               : Two missed payments in the last 12 months; one account
+                      reached 60 days past due in Q4 2024. Recent inquiry spike.
+
+============================================================
+5. POLICY REFERENCE & RISK FLAGS
+------------------------------------------------------------
+SME origination policy requires a bureau score >= 680 and zero delinquencies in
+the trailing 12 months. This applicant is below the score floor (655) and shows
+2 recent delinquencies, including a 60 DPD event. These are hard-risk triggers
+that the credit-memo agent must surface for human decision.
+
+============================================================
+6. RELATIONSHIP MANAGER NOTE
+------------------------------------------------------------
+Operating client with a recognisable export brand, but repayment behaviour has
+deteriorated and the bureau record breaches origination policy. Submitting for
+agent review and credit-committee decision; expect a reject recommendation
+absent compensating mitigants.
+                                   — Wirote T., Relationship Manager, 1 June 2026
+
+All figures and identities in this document are synthetic and generated for the
+Agentic AI Platform PoC (UC1). They do not represent any real person or company.
+`;
+
+// =============================================================================
 // Highly Confidential variant — same applicant, but a board/legal document that
 // Microsoft Purview classifies as "Highly Confidential \\ Board & Legal".
 // The credit-memo data-loss-prevention policy blocks this from agent ingestion.
