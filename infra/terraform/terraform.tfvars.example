@@ -32,6 +32,11 @@ existing_purview_account_name        = "pview-isaru66-default-001"
 # --- Defender for Cloud ---
 enable_standard_cspm       = true
 enable_defender_paid_plans = true
+enable_dspm_for_ai         = true # DSPM for AI (Defender CSPM Sensitive Data Discovery)
+
+# --- Azure Policy governance guardrails ---
+enable_policy_assignments = true
+policy_effect             = "Audit" # Audit (report) or Deny (enforce)
 
 # --- Static Web App ---
 deploy_static_web_app   = true

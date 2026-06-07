@@ -151,6 +151,32 @@ variable "enable_defender_paid_plans" {
   default     = true
 }
 
+variable "enable_dspm_for_ai" {
+  description = "Enable Data Security Posture Management (DSPM) for AI via the Defender CSPM Sensitive Data Discovery extension. Requires enable_standard_cspm = true."
+  type        = bool
+  default     = true
+}
+
+# ---------------------------------------------------------------------------
+# Azure Policy (governance guardrails)
+# ---------------------------------------------------------------------------
+variable "enable_policy_assignments" {
+  description = "Deploy the AI + data governance Azure Policy initiative and assign it to the platform resource group."
+  type        = bool
+  default     = true
+}
+
+variable "policy_effect" {
+  description = "Effect for every member policy in the governance initiative. Audit reports non-compliance without blocking; Deny enforces."
+  type        = string
+  default     = "Audit"
+
+  validation {
+    condition     = contains(["Audit", "Deny", "Disabled"], var.policy_effect)
+    error_message = "policy_effect must be one of: Audit, Deny, Disabled."
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Static Web App (frontend host)
 # ---------------------------------------------------------------------------

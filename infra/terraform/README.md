@@ -27,7 +27,8 @@ Terraform — they target the same resource group and produce the same topology.
 | `functions.tf` | Y1 plan + tools & durable Function Apps (Python 3.11) |
 | `containerapps.tf` | Container Apps env + FastAPI orchestrator (external ingress :8000) |
 | `purview.tf` | New **or** existing Purview account + Storage Blob Data Reader grant |
-| `defender.tf` | Defender for Cloud plans (CSPM, Key Vault, Storage V2, AI) at subscription scope |
+| `defender.tf` | Defender for Cloud plans (CSPM, Key Vault, Storage V2, AI) + **DSPM for AI** (Sensitive Data Discovery) at subscription scope |
+| `policy.tf` | **Azure Policy** AI & data governance initiative (AI Services network/auth/CMK, storage, Key Vault) assigned to the platform RG |
 | `staticwebapp.tf` | Static Web App for the React SPA (optional) |
 | `foundry.tf` | Live AI Foundry stack in `swedencentral` (project, models, telemetry, audit store, secrets, identity) |
 

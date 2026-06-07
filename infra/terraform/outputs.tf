@@ -80,6 +80,16 @@ output "purview_account_name" {
   value       = local.purview_account_name
 }
 
+output "dspm_for_ai_enabled" {
+  description = "Whether DSPM for AI (Defender CSPM Sensitive Data Discovery) is enabled."
+  value       = var.enable_standard_cspm && var.enable_dspm_for_ai
+}
+
+output "ai_governance_policy_assignment_id" {
+  description = "Resource ID of the AI & data governance policy assignment (null if disabled)."
+  value       = var.enable_policy_assignments ? azurerm_resource_group_policy_assignment.ai_governance[0].id : null
+}
+
 output "static_web_app_default_hostname" {
   description = "Static Web App default hostname (if deployed)."
   value       = var.deploy_static_web_app ? azurerm_static_web_app.ui[0].default_host_name : null
