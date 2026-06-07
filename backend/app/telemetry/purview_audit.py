@@ -121,6 +121,9 @@ def emit_label_enforcement_event(
             "user": user,
             "use_case": use_case,
             "detail": label_result.get("justification"),
+            "dspm_generation": "new",
+            "defender_cspm_dspm": settings.defender_cspm_dspm_enabled,
+            "sensitive_data_discovery": settings.dspm_sensitive_data_discovery_enabled,
             "dspm_for_ai_enabled": settings.dspm_for_ai_enabled,
             "defender_ai_plan_enabled": settings.defender_ai_plan_enabled,
         }
@@ -205,6 +208,9 @@ def emit_prompt_risk_event(
                 f"call. Detection source={detection_source}. Captured by DSPM for AI "
                 "as risky AI usage."
             ),
+            "dspm_generation": "new",
+            "defender_cspm_dspm": settings.defender_cspm_dspm_enabled,
+            "sensitive_data_discovery": settings.dspm_sensitive_data_discovery_enabled,
             "dspm_for_ai_enabled": settings.dspm_for_ai_enabled,
             "defender_ai_plan_enabled": settings.defender_ai_plan_enabled,
         }

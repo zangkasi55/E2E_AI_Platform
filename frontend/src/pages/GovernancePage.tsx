@@ -1,10 +1,75 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { GovernancePayload } from "../lib/backend";
+import type { AgentBinding, GovernancePayload } from "../lib/backend";
 import type { DspmEvent } from "../lib/dspmEvents";
 import { backend, USE_MOCK } from "../lib";
 import { AppShell } from "../components/AppShell";
 import { DspmEventsPanel } from "../components/DspmEventsPanel";
+
+/** The nine governance / observability pillars wired to every agent. */
+const PILLARS: ReadonlyArray<{ key: keyof Omit<AgentBinding, "agent" | "use_case">; label: string }> = [
+  { key: "entra", label: "EntraID" },
+  { key: "apim", label: "APIM" },
+  { key: "guardrail", label: "Guardrail" },
+  { key: "agent_workflow", label: "Agent workflow" },
+  { key: "ai_foundry", label: "AI Foundry" },
+  { key: "dspm", label: "DSPM" },
+  { key: "purview", label: "Purview" },
+  { key: "app_insights", label: "AppInsight" },
+  { key: "foundry_observability", label: "Foundry Observability" },
+];
+
+function AgentWiringMatrix({ bindings }: { bindings: AgentBinding[] }) {
+  if (!bindings || bindings.length === 0) return null;
+  const totalCells = bindings.length * PILLARS.length;
+  const wiredCells = bindings.reduce(
+    (sum, b) => sum + PILLARS.filter((p) => b[p.key]?.configured).length,
+    0,
+  );
+  return (
+    <div className="panel">
+      <h2>Per-agent wiring · {PILLARS.length} pillars</h2>
+      <p className="sub">
+        Every agent is bound to all {PILLARS.length} governance/observability pillars ·{" "}
+        {wiredCells}/{totalCells} bindings configured.
+      </p>
+      <div className="matrix-scroll">
+        <table className="table matrix-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Use case</th>
+              {PILLARS.map((p) => (
+                <th key={p.key} className="matrix-col">{p.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bindings.map((b) => (
+              <tr key={b.agent}>
+                <td className="matrix-agent">{b.agent}</td>
+                <td><span className="sub">{b.use_case}</span></td>
+                {PILLARS.map((p) => {
+                  const ok = !!b[p.key]?.configured;
+                  return (
+                    <td key={p.key} className="matrix-cell">
+                      <span
+                        className={`matrix-dot ${ok ? "ok" : "off"}`}
+                        title={`${b.agent} → ${p.label}: ${ok ? "configured" : "not configured"}`}
+                      >
+                        {ok ? "●" : "○"}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function formatTime(iso: string): string {
   try {
@@ -148,6 +213,10 @@ export function GovernancePage() {
                 </span>
               </div>
             </div>
+
+            {data.agent_bindings && data.agent_bindings.length > 0 ? (
+              <AgentWiringMatrix bindings={data.agent_bindings} />
+            ) : null}
 
             <PolicyCard title="Data Policy" policy={data.data_policy} />
             <PolicyCard title="Security Policy" policy={data.security_policy} />

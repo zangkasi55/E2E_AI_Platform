@@ -1289,3 +1289,19 @@ button {
   color: var(--muted);
   text-align: center;
 }
+
+/* ---- Per-agent nine-pillar wiring matrix (Governance page) ---------------- */
+.matrix-scroll { overflow-x: auto; }
+.matrix-table { min-width: 760px; }
+.matrix-table th.matrix-col {
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.matrix-table .matrix-agent { font-weight: 600; white-space: nowrap; }
+.matrix-table td.matrix-cell { text-align: center; padding: 6px 8px; }
+.matrix-dot { font-size: 14px; }
+.matrix-dot.ok { color: var(--ok, #1f9d55); }
+.matrix-dot.off { color: #c2c8d2; }

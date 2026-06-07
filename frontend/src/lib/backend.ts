@@ -43,6 +43,27 @@ export interface ComponentWiring {
   details: Record<string, string>;
 }
 
+/** A single pillar block inside a per-agent binding (always has `configured`). */
+export interface PillarBinding {
+  configured: boolean;
+  [key: string]: unknown;
+}
+
+/** Per-agent nine-pillar governance/observability wiring binding. */
+export interface AgentBinding {
+  agent: string;
+  use_case: string;
+  entra: PillarBinding;
+  apim: PillarBinding;
+  guardrail: PillarBinding;
+  agent_workflow: PillarBinding;
+  ai_foundry: PillarBinding;
+  dspm: PillarBinding;
+  purview: PillarBinding;
+  app_insights: PillarBinding;
+  foundry_observability: PillarBinding;
+}
+
 export interface GovernancePayload {
   data_policy: GovernancePolicy;
   security_policy: GovernancePolicy;
@@ -54,6 +75,8 @@ export interface GovernancePayload {
     configured: boolean;
   };
   component_wiring: ComponentWiring[];
+  /** Per-agent nine-pillar wiring (optional for older/mocked payloads). */
+  agent_bindings?: AgentBinding[];
 }
 
 export interface Backend {

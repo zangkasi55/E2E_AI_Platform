@@ -103,12 +103,21 @@ class Settings(BaseSettings):
     purview_blocked_labels: list[str] = ["Confidential", "Highly Confidential"]
 
     # ---- Microsoft Defender for Cloud / DSPM for AI ------------------------
-    # DSPM = Data Security Posture Management. For AI workloads this is delivered
-    # by (a) Defender for Cloud's "AI workloads" plan (threat protection on the
-    # Azure OpenAI / Foundry account) and (b) Microsoft Purview "DSPM for AI"
-    # (sensitive-data discovery + posture across agent prompts/responses).
-    defender_ai_plan_enabled: bool = True
+    # DSPM = Data Security Posture Management. Agents bind to the NEW DSPM
+    # posture plane (not the legacy threat-protection-only signal):
+    #   * Defender CSPM (CloudPosture Standard) with the Sensitive Data
+    #     Discovery extension — the modern Defender for Cloud DSPM engine that
+    #     discovers/maps sensitive data and attack paths. Deployed today as
+    #     CloudPosture=Standard with SensitiveDataDiscovery=On.
+    #   * Microsoft Purview "DSPM for AI" — the new Purview-portal posture for
+    #     AI prompts/responses (sensitive-data discovery across agent traffic).
+    # The Defender for "AI workloads" plan (`defender_ai_plan_enabled`) is
+    # threat protection only (prompt-injection / anomalous-use alerts). It is
+    # reported for completeness but is NOT the DSPM posture plane.
+    defender_cspm_dspm_enabled: bool = True
+    dspm_sensitive_data_discovery_enabled: bool = True
     dspm_for_ai_enabled: bool = True
+    defender_ai_plan_enabled: bool = True
 
     # ---- Azure AI Foundry guardrails ---------------------------------------
     # Custom blocking RAI policy (scbx-guardrail-v1) attached to the gpt-4o /

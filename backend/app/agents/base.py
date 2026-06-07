@@ -60,7 +60,9 @@ class Agent:
         self.system_prompt = system_prompt
         self.use_case = use_case
         self.identity = identity_for(name)
-        # Four-pillar governance binding (Entra · Purview · DSPM · Guardrail).
+        # Nine-pillar governance binding (EntraID · APIM · Guardrail · Agent
+        # workflow · AI Foundry · DSPM · Purview · App Insights · Foundry
+        # Observability) — surfaced per-agent via governance_for(name).
         self.governance = governance_for(name)
         self._client = None  # lazily created Azure OpenAI client (live mode)
 

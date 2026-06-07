@@ -3,13 +3,40 @@
 // Mirrors the real route shapes so the UI is byte-for-byte identical when the
 // FastAPI orchestrator lands. Small artificial latency keeps the UX realistic.
 // =============================================================================
-import type { Backend, GovernancePayload } from "./backend";
+import type { Backend, AgentBinding, GovernancePayload } from "./backend";
 import type { RunDef, RunKey, Step, TokenRecord } from "../types";
 import { RUNS, TOKENS } from "../data/mockData";
 import { resolveSensitivityLabel } from "./sensitivity";
 import { getDspmEvents, recordDspmEvent, type DspmEvent } from "./dspmEvents";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Build a per-agent binding with all nine pillars configured (mock). */
+function mockBinding(agent: string, use_case: string): AgentBinding {
+  const on = { configured: true } as const;
+  return {
+    agent,
+    use_case,
+    entra: on,
+    apim: on,
+    guardrail: on,
+    agent_workflow: on,
+    ai_foundry: on,
+    dspm: on,
+    purview: on,
+    app_insights: on,
+    foundry_observability: on,
+  };
+}
+
+const MOCK_AGENT_BINDINGS: AgentBinding[] = [
+  mockBinding("memo_orchestrator", "credit_memo"),
+  mockBinding("doc_retrieval", "credit_memo"),
+  mockBinding("financial_ratio", "credit_memo"),
+  mockBinding("bureau_summary", "credit_memo"),
+  mockBinding("memo_assembler", "credit_memo"),
+  mockBinding("banking_controller", "banking"),
+];
 
 export const mockBackend: Backend = {
   async getRun(key: RunKey, options): Promise<RunDef> {
@@ -177,7 +204,41 @@ export const mockBackend: Backend = {
             tokens_container: "tokens",
           },
         },
+        {
+          component: "Guardrail",
+          configured: true,
+          details: { provider: "Azure AI Foundry", policy_name: "scbx-guardrail-v1", mode: "enforce" },
+        },
+        {
+          component: "AI Foundry",
+          configured: true,
+          details: {
+            openai_endpoint: "https://agpoc-aoai-dev.openai.azure.com/",
+            project_name: "SCBXAIplatformPOC",
+            agents: "model-direct",
+          },
+        },
+        {
+          component: "Agent workflow",
+          configured: true,
+          details: {
+            topology:
+              "memo_orchestrator -> {doc_retrieval, financial_ratio, bureau_summary, memo_assembler}; banking_controller",
+            foundry_workflow_agents: "in-process orchestrator",
+          },
+        },
+        {
+          component: "App Insights",
+          configured: true,
+          details: { metric: "gen_ai.token.usage", connection: "configured" },
+        },
+        {
+          component: "Foundry Observability",
+          configured: true,
+          details: { tracing: "gen_ai.* spans", view: "Foundry project Tracing" },
+        },
       ],
+      agent_bindings: MOCK_AGENT_BINDINGS,
     };
   },
 

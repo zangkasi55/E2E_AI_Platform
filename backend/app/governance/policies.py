@@ -125,10 +125,15 @@ def component_wiring() -> list[dict[str, Any]]:
         },
         {
             "component": "Defender / DSPM for AI",
-            "configured": bool(settings.defender_ai_plan_enabled or settings.dspm_for_ai_enabled),
+            "configured": bool(
+                settings.defender_cspm_dspm_enabled or settings.dspm_for_ai_enabled
+            ),
             "details": {
-                "defender_ai_workloads_plan": settings.defender_ai_plan_enabled,
+                "generation": "new",
+                "defender_cspm_dspm": settings.defender_cspm_dspm_enabled,
+                "sensitive_data_discovery": settings.dspm_sensitive_data_discovery_enabled,
                 "purview_dspm_for_ai": settings.dspm_for_ai_enabled,
+                "defender_ai_workloads_plan": settings.defender_ai_plan_enabled,
             },
         },
         {
@@ -140,6 +145,67 @@ def component_wiring() -> list[dict[str, Any]]:
                 "runs_container": settings.cosmos_container_runs,
                 "steps_container": settings.cosmos_container_steps,
                 "tokens_container": settings.cosmos_container_tokens,
+            },
+        },
+        {
+            "component": "Guardrail",
+            "configured": bool(
+                settings.foundry_guardrail_policy_id
+                or settings.foundry_guardrail_policy_name
+            ),
+            "details": {
+                "provider": settings.foundry_guardrail_provider,
+                "policy_name": settings.foundry_guardrail_policy_name,
+                "mode": settings.foundry_guardrail_mode,
+            },
+        },
+        {
+            "component": "AI Foundry",
+            "configured": bool(
+                settings.azure_openai_endpoint or settings.foundry_project_endpoint
+            ),
+            "details": {
+                "openai_endpoint": settings.azure_openai_endpoint,
+                "project_endpoint": settings.foundry_project_endpoint,
+                "project_name": settings.foundry_project_name,
+                "agents": "enabled" if settings.use_foundry_agents else "model-direct",
+            },
+        },
+        {
+            "component": "Agent workflow",
+            "configured": True,
+            "details": {
+                "topology": (
+                    "memo_orchestrator -> {doc_retrieval, financial_ratio, "
+                    "bureau_summary, memo_assembler}; banking_controller"
+                ),
+                "foundry_workflow_agents": (
+                    "enabled" if settings.use_foundry_agents else "in-process orchestrator"
+                ),
+            },
+        },
+        {
+            "component": "App Insights",
+            "configured": bool(settings.applicationinsights_connection_string),
+            # Never expose the connection string itself (it is secret-bearing).
+            "details": {
+                "metric": "gen_ai.token.usage",
+                "connection": (
+                    "configured" if settings.applicationinsights_connection_string else ""
+                ),
+            },
+        },
+        {
+            "component": "Foundry Observability",
+            "configured": bool(
+                settings.applicationinsights_connection_string
+                and (
+                    settings.foundry_project_endpoint or settings.azure_openai_endpoint
+                )
+            ),
+            "details": {
+                "tracing": "gen_ai.* spans",
+                "view": "Foundry project Tracing",
             },
         },
     ]

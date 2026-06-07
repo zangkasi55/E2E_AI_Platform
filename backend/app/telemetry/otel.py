@@ -24,36 +24,45 @@ _configured = False
 def configure_telemetry() -> None:
     """Idempotently configure Azure Monitor + OTEL.
 
-    Configures whenever a live execution path is active (``live_active``) and an
-    App Insights connection string is present — including the hybrid demo mode
-    (``MOCK_MODE=true`` + ``LIVE_LLM``/``USE_FOUNDRY_AGENTS``) so gen_ai spans and
-    token usage flow into the Foundry project's connected Application Insights.
+    Configures whenever an App Insights connection string is present — including
+    the mock demo (``MOCK_MODE=true``). This means every run (mock, hybrid, or
+    fully live) emits per-agent ``gen_ai`` spans + ``gen_ai.token.usage`` metrics
+    into Application Insights and the Foundry project's connected Tracing view,
+    so App Insights and Foundry Observability are demonstrably wired for all
+    agents and not gated behind a live LLM path. When no connection string is
+    configured the setup is a silent no-op so the app still runs offline.
     """
     global _configured, _tracer, _meter, _token_usage_counter
-    if _configured or not settings.live_active:
-        _configured = True
+    if _configured:
         return
     if not settings.applicationinsights_connection_string:
         # Nothing to export to; stay silent rather than crash the PoC.
         _configured = True
         return
 
-    # Lazy imports so the module compiles without the SDK installed.
-    from azure.monitor.opentelemetry import configure_azure_monitor  # type: ignore
-    from opentelemetry import metrics, trace  # type: ignore
+    # Lazy imports so the module compiles without the SDK installed. Wrapped so
+    # a telemetry-setup failure degrades to a no-op instead of crashing startup
+    # (this path now runs in the production mock demo, not only in live mode).
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor  # type: ignore
+        from opentelemetry import metrics, trace  # type: ignore
 
-    configure_azure_monitor(
-        connection_string=settings.applicationinsights_connection_string,
-        # TODO(copilot): set service.name resource attr to "agpoc-aca-orch-dev".
-    )
-    _tracer = trace.get_tracer("agpoc.orchestrator")
-    _meter = metrics.get_meter("agpoc.orchestrator")
-    # Canonical custom metric name.
-    _token_usage_counter = _meter.create_counter(
-        name="gen_ai.token.usage",
-        unit="token",
-        description="Generative-AI token usage per model call",
-    )
+        configure_azure_monitor(
+            connection_string=settings.applicationinsights_connection_string,
+            # TODO(copilot): set service.name resource attr to "agpoc-aca-orch-dev".
+        )
+        _tracer = trace.get_tracer("agpoc.orchestrator")
+        _meter = metrics.get_meter("agpoc.orchestrator")
+        # Canonical custom metric name.
+        _token_usage_counter = _meter.create_counter(
+            name="gen_ai.token.usage",
+            unit="token",
+            description="Generative-AI token usage per model call",
+        )
+    except Exception:  # pragma: no cover - telemetry must never break the app
+        _tracer = None
+        _meter = None
+        _token_usage_counter = None
     _configured = True
 
 
