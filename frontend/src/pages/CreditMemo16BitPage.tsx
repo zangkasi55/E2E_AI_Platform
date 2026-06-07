@@ -425,7 +425,9 @@ export function CreditMemo16BitPage() {
                     {player.status === "playing" ? "❚❚ PAUSE" : "▶ PLAY"}
                   </button>
                   <button type="button" className="cm16-btn step" onClick={() => player.step()} disabled={loading || !player.run || blocked}>⏭ STEP</button>
-                  <button type="button" className="cm16-btn reset" onClick={() => player.reset()} disabled={!player.run}>↺ RESET</button>
+                  {/* Reset is always clickable (a no-op when no run is loaded) so it never
+                      appears dead during the backend cold-start or a failed run load. */}
+                  <button type="button" className="cm16-btn reset" onClick={() => player.reset()}>↺ RESET</button>
                 </div>
                 {blocked && (
                   <div className="cm16-btnrow mt8">
