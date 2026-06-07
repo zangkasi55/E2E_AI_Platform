@@ -13,6 +13,7 @@ Service Bus abstraction). No memo is final without a human decision.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..agents.base import Agent
@@ -100,7 +101,12 @@ def _build_agents() -> dict[str, Agent]:
                 "recommend approval when any policy gate fails. When hard-risk triggers "
                 "exist (DSCR/leverage/EBITDA breach, bureau score < 680, or recent "
                 "delinquencies), the recommendation must be reject, with the specific "
-                "failing gates cited."
+                "failing gates cited. The attached credit file is the actual case under "
+                "review: if it states an explicit DECLINE / 'not recommended for approval' "
+                "recommendation, reports negative EBITDA, carries a going-concern "
+                "qualification, indicates negative equity / technical insolvency, or a "
+                "DSCR below 1.25x, you MUST recommend reject regardless of any dataset "
+                "figures — cite the exact language from the file."
             ),
             use_case=USE_CASE,
         ),
@@ -207,6 +213,78 @@ class MemoOrchestrator:
         return {"passed": all(c["ok"] for c in checks), "checks": checks}
 
     @staticmethod
+    def _verify_document(doc_text: str) -> dict[str, Any]:
+        """Scan the attached credit file itself for explicit reject signals.
+
+        The uploaded document is the actual case under review. When it contains
+        hard adverse signals — an explicit decline recommendation, negative
+        EBITDA, a going-concern qualification, technical insolvency, or a
+        sub-threshold DSCR — those findings override any dataset-derived
+        approval. This makes the recommendation reflect what the agent reads in
+        the document, not just the row the applicant id maps to.
+        """
+        text = (doc_text or "").lower()
+        if not text.strip():
+            # No document text to analyse — contribute no signal either way.
+            return {"passed": True, "checks": []}
+
+        def found(pattern: str) -> bool:
+            return re.search(pattern, text) is not None
+
+        # Each signal: (check_name, adverse_present, detail_when_adverse)
+        signals = [
+            (
+                "document_recommendation_not_decline",
+                bool(
+                    found(r"recommendation[:\s][^\n]{0,80}\b(decline|reject)\b")
+                    or "not recommended for approval" in text
+                    or "does not meet credit standards" in text
+                    or "fails on every gate" in text
+                    or "fails on every credit gate" in text
+                ),
+                "explicit decline / not-recommended language in the credit file",
+            ),
+            (
+                "document_ebitda_non_negative",
+                bool(
+                    found(r"negative ebitda")
+                    or found(r"ebitda[^\n]{0,60}(turned negative|is negative|went negative|negative)")
+                    or found(r"ebitda[^\n]{0,20}[-(]\s?\d")
+                ),
+                "credit file reports negative EBITDA",
+            ),
+            (
+                "document_no_going_concern",
+                bool("going-concern" in text or "going concern" in text),
+                "auditor going-concern qualification noted in the credit file",
+            ),
+            (
+                "document_solvent",
+                bool(
+                    "technically insolvent" in text
+                    or "negative book equity" in text
+                    or "negative equity" in text
+                ),
+                "negative equity / technical insolvency noted in the credit file",
+            ),
+            (
+                "document_dscr_meets_threshold",
+                bool(found(r"dscr[^\n]{0,40}(<|below|far below)\s*(0|1\.[0-1]|1\.2[0-4])")),
+                "credit file states DSCR below the 1.25x minimum",
+            ),
+        ]
+        checks = [
+            {
+                "name": name,
+                "ok": not adverse,
+                "detail": detail if adverse else "no adverse signal in document",
+            }
+            for name, adverse, detail in signals
+        ]
+        return {"passed": all(c["ok"] for c in checks), "checks": checks}
+
+
+    @staticmethod
     def _build_approval_guidance(*verifications: dict[str, Any]) -> dict[str, Any]:
         should_approve: list[str] = []
         should_not_approve: list[str] = []
@@ -224,6 +302,13 @@ class MemoOrchestrator:
             "ebitda_margin_non_negative",
             "bureau_score_acceptable",
             "recent_delinquencies_clear",
+            # Signals read directly from the attached credit file. Any of these
+            # makes the case a hard reject regardless of the dataset row.
+            "document_recommendation_not_decline",
+            "document_ebitda_non_negative",
+            "document_no_going_concern",
+            "document_solvent",
+            "document_dscr_meets_threshold",
         }
         hard_reject = any(
             reason.split(":", 1)[0] in hard_reject_markers for reason in should_not_approve
@@ -458,11 +543,16 @@ class MemoOrchestrator:
         )
         run.draft_memo = draft
         draft_verification = self._verify_memo_draft(draft)
+        # Analyse the attached credit file itself so an adverse document (explicit
+        # decline, negative EBITDA, going-concern, insolvency, sub-threshold DSCR)
+        # rejects the case even if the dataset row would otherwise pass.
+        document_verification = self._verify_document(doc_content)
         approval_guidance = self._build_approval_guidance(
             retrieval_verification,
             ratios_verification,
             bureau_verification,
             draft_verification,
+            document_verification,
         )
         run.draft_memo["approval_guidance"] = approval_guidance
         self.agents["memo_assembler"].run_step(
