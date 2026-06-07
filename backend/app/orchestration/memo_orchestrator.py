@@ -102,11 +102,15 @@ def _build_agents() -> dict[str, Agent]:
                 "exist (DSCR/leverage/EBITDA breach, bureau score < 680, or recent "
                 "delinquencies), the recommendation must be reject, with the specific "
                 "failing gates cited. The attached credit file is the actual case under "
-                "review: if it states an explicit DECLINE / 'not recommended for approval' "
-                "recommendation, reports negative EBITDA, carries a going-concern "
-                "qualification, indicates negative equity / technical insolvency, or a "
-                "DSCR below 1.25x, you MUST recommend reject regardless of any dataset "
-                "figures — cite the exact language from the file."
+                "review, but form your OWN judgement from its financial data and evidence "
+                "— do NOT defer to any recommendation, opinion, or DECLINE/APPROVE advice "
+                "written by the relationship manager in the file. Independently read the "
+                "figures: latest-year EBITDA and margin, DSCR, leverage, current ratio / "
+                "liquidity, bureau score, trailing-12-month delinquencies, and book "
+                "equity. If the evidence shows negative EBITDA, a DSCR below 1.25x, a "
+                "bureau score below 680, any recent delinquency, a current ratio below "
+                "1.0x, or negative book equity, you MUST recommend reject — cite the "
+                "specific figures from the file, not its stated recommendation."
             ),
             use_case=USE_CASE,
         ),
@@ -214,73 +218,115 @@ class MemoOrchestrator:
 
     @staticmethod
     def _verify_document(doc_text: str) -> dict[str, Any]:
-        """Scan the attached credit file itself for explicit reject signals.
+        """Evaluate the financial EVIDENCE in the attached credit file against
+        the credit policy gates.
 
-        The uploaded document is the actual case under review. When it contains
-        hard adverse signals — an explicit decline recommendation, negative
-        EBITDA, a going-concern qualification, technical insolvency, or a
-        sub-threshold DSCR — those findings override any dataset-derived
-        approval. This makes the recommendation reflect what the agent reads in
-        the document, not just the row the applicant id maps to.
+        The agent forms its own view from the data — revenue, EBITDA, DSCR,
+        leverage, liquidity, bureau score, delinquencies, equity. It does NOT
+        defer to any recommendation, opinion, or "DECLINE/APPROVE" advice
+        written in the file. Only objective figures and observable facts feed
+        the gates; whatever the relationship manager concluded is ignored.
         """
         text = (doc_text or "").lower()
         if not text.strip():
             # No document text to analyse — contribute no signal either way.
             return {"passed": True, "checks": []}
 
-        def found(pattern: str) -> bool:
-            return re.search(pattern, text) is not None
+        checks: list[dict[str, Any]] = []
 
-        # Each signal: (check_name, adverse_present, detail_when_adverse)
-        signals = [
-            (
-                "document_recommendation_not_decline",
-                bool(
-                    found(r"recommendation[:\s][^\n]{0,80}\b(decline|reject)\b")
-                    or "not recommended for approval" in text
-                    or "does not meet credit standards" in text
-                    or "fails on every gate" in text
-                    or "fails on every credit gate" in text
-                ),
-                "explicit decline / not-recommended language in the credit file",
-            ),
-            (
-                "document_ebitda_non_negative",
-                bool(
-                    found(r"negative ebitda")
-                    or found(r"ebitda[^\n]{0,60}(turned negative|is negative|went negative|negative)")
-                    or found(r"ebitda[^\n]{0,20}[-(]\s?\d")
-                ),
-                "credit file reports negative EBITDA",
-            ),
-            (
-                "document_no_going_concern",
-                bool("going-concern" in text or "going concern" in text),
-                "auditor going-concern qualification noted in the credit file",
-            ),
-            (
-                "document_solvent",
-                bool(
-                    "technically insolvent" in text
-                    or "negative book equity" in text
-                    or "negative equity" in text
-                ),
-                "negative equity / technical insolvency noted in the credit file",
-            ),
-            (
-                "document_dscr_meets_threshold",
-                bool(found(r"dscr[^\n]{0,40}(<|below|far below)\s*(0|1\.[0-1]|1\.2[0-4])")),
-                "credit file states DSCR below the 1.25x minimum",
-            ),
-        ]
-        checks = [
-            {
-                "name": name,
-                "ok": not adverse,
-                "detail": detail if adverse else "no adverse signal in document",
-            }
-            for name, adverse, detail in signals
-        ]
+        # Bureau score evidence (policy: >= 680).
+        m = re.search(r"\bscore\b[^0-9\-]{0,15}(\d{3})\b", text)
+        if m:
+            score = int(m.group(1))
+            checks.append(
+                {
+                    "name": "document_bureau_score_acceptable",
+                    "ok": score >= 680,
+                    "detail": f"document bureau score={score}",
+                }
+            )
+
+        # Delinquencies in the trailing 12 months (policy: == 0). Anchor past the
+        # optional "(12m)" qualifier so it is not mistaken for the count.
+        m = re.search(r"delinquenc\w*\s*(?:\(?12\s*m\)?)?\s*[:\t ]\s*(\d+)", text)
+        if m:
+            delinq = int(m.group(1))
+            checks.append(
+                {
+                    "name": "document_recent_delinquencies_clear",
+                    "ok": delinq == 0,
+                    "detail": f"document delinquencies_12m={delinq}",
+                }
+            )
+
+        # Current ratio / liquidity evidence (policy: >= 1.0).
+        m = re.search(r"current[ _]ratio[^0-9]{0,12}(\d+\.\d+)", text)
+        if m:
+            cr = float(m.group(1))
+            checks.append(
+                {
+                    "name": "document_current_ratio_ok",
+                    "ok": cr >= 1.0,
+                    "detail": f"document current_ratio={cr}",
+                }
+            )
+
+        # EBITDA evidence (policy: latest-year EBITDA / margin non-negative).
+        neg_ebitda = bool(
+            re.search(r"ebitda[^\n]{0,40}(turned negative|is negative|went negative|negative)", text)
+            or re.search(r"ebitda[^a-z0-9]{0,12}[-(]\s?\d", text)
+            or re.search(r"ebitda margin[^0-9\-]{0,8}-\s?\d", text)
+        )
+        if neg_ebitda:
+            checks.append(
+                {
+                    "name": "document_ebitda_non_negative",
+                    "ok": False,
+                    "detail": "document financials evidence negative EBITDA",
+                }
+            )
+
+        # Equity / solvency evidence (policy: positive book equity).
+        neg_equity = bool(
+            re.search(r"book equity[^\n]{0,24}[-(]\s?\d", text)
+            or re.search(r"\bequity\b[^\n]{0,12}(-\s?\d|\(\s?\d)", text)
+            or "negative equity" in text
+            or "technically insolvent" in text
+        )
+        if neg_equity:
+            checks.append(
+                {
+                    "name": "document_solvent",
+                    "ok": False,
+                    "detail": "document financials evidence negative book equity / insolvency",
+                }
+            )
+
+        # DSCR evidence (policy: >= 1.25). Prefer an explicit sub-threshold value;
+        # otherwise read a numeric DSCR and compare.
+        if re.search(
+            r"dscr[^\n]{0,30}(<\s*0|<\s?1\.2[0-4]|below 1\.25|far below 1\.25|coverage[^\n]{0,12}negative)",
+            text,
+        ):
+            checks.append(
+                {
+                    "name": "document_dscr_meets_threshold",
+                    "ok": False,
+                    "detail": "document financials evidence DSCR below 1.25x",
+                }
+            )
+        else:
+            m = re.search(r"\bdscr\b[^0-9\-\n]{0,20}(-?\d+\.\d+)", text)
+            if m:
+                dscr = float(m.group(1))
+                checks.append(
+                    {
+                        "name": "document_dscr_meets_threshold",
+                        "ok": dscr >= 1.25,
+                        "detail": f"document DSCR={dscr}",
+                    }
+                )
+
         return {"passed": all(c["ok"] for c in checks), "checks": checks}
 
 
@@ -302,13 +348,15 @@ class MemoOrchestrator:
             "ebitda_margin_non_negative",
             "bureau_score_acceptable",
             "recent_delinquencies_clear",
-            # Signals read directly from the attached credit file. Any of these
-            # makes the case a hard reject regardless of the dataset row.
-            "document_recommendation_not_decline",
+            # Evidence read directly from the attached credit file's financials.
+            # Any breach makes the case a hard reject regardless of the dataset
+            # row — the agent decides on the data, not on the file's advice.
             "document_ebitda_non_negative",
-            "document_no_going_concern",
             "document_solvent",
             "document_dscr_meets_threshold",
+            "document_bureau_score_acceptable",
+            "document_recent_delinquencies_clear",
+            "document_current_ratio_ok",
         }
         hard_reject = any(
             reason.split(":", 1)[0] in hard_reject_markers for reason in should_not_approve
@@ -543,9 +591,10 @@ class MemoOrchestrator:
         )
         run.draft_memo = draft
         draft_verification = self._verify_memo_draft(draft)
-        # Analyse the attached credit file itself so an adverse document (explicit
-        # decline, negative EBITDA, going-concern, insolvency, sub-threshold DSCR)
-        # rejects the case even if the dataset row would otherwise pass.
+        # Analyse the financial EVIDENCE in the attached credit file (EBITDA,
+        # DSCR, current ratio, bureau score, delinquencies, equity) against the
+        # policy gates, so a case whose data breaches policy rejects even if the
+        # dataset row would pass. The file's own recommendation is ignored.
         document_verification = self._verify_document(doc_content)
         approval_guidance = self._build_approval_guidance(
             retrieval_verification,

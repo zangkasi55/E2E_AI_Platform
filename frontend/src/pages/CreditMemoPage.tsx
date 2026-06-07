@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import type { RunDef } from "../types";
 import { backend } from "../lib";
+import { extractDocxText } from "../lib/docx";
 import { UC1_AGENTS } from "../data/mockData";
 import {
   SAMPLE_DR_DOCUMENT,
@@ -55,6 +56,21 @@ const SAMPLE_CONTENT: Record<string, string> = {
   [SAMPLE_REJECT_FILE_NAME]: SAMPLE_REJECT_DOCUMENT,
   [SAMPLE_HC_FILE_NAME]: SAMPLE_HC_DOCUMENT,
 };
+
+// Read an uploaded credit file as plain text so the backend agent can analyse
+// the actual case. .docx files are ZIP archives — `File.text()` returns garbled
+// bytes — so route those through the dependency-free extractor.
+async function readUploadedText(file: File): Promise<string> {
+  const isDocx =
+    /\.docx$/i.test(file.name) ||
+    file.type ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (isDocx) {
+    const text = await extractDocxText(file);
+    if (text) return text;
+  }
+  return file.text();
+}
 
 export function CreditMemoPage() {
   const [run, setRun] = useState<RunDef | null>(null);
@@ -118,7 +134,7 @@ export function CreditMemoPage() {
       return;
     }
     if (docPreview === null && attachedFile) {
-      const text = sampleContent ?? (await attachedFile.text());
+      const text = sampleContent ?? (await readUploadedText(attachedFile));
       setDocPreview(text);
     }
     setShowPreview(true);
@@ -139,7 +155,7 @@ export function CreditMemoPage() {
     // request small.
     let content: string | undefined;
     try {
-      const raw = SAMPLE_CONTENT[file.name] ?? (await file.text());
+      const raw = SAMPLE_CONTENT[file.name] ?? (await readUploadedText(file));
       content = raw ? raw.slice(0, 20000) : undefined;
     } catch {
       content = undefined;
