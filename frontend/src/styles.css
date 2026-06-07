@@ -1092,6 +1092,73 @@ button {
   50% { opacity: 0.55; }
 }
 
+/* ---- Clickable doc evidence links (Test Expectations) ------------------- */
+.evidence-links { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.evidence-sep { color: var(--muted); }
+.doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--gov);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--gov) 45%, transparent);
+}
+.doc-link:hover { border-bottom-style: solid; }
+.doc-link-icon { font-size: 11px; }
+
+/* ---- Graphical markdown doc viewer ------------------------------------- */
+.doc-prose { line-height: 1.6; color: var(--ink); max-width: 920px; }
+.doc-prose h1 { font-size: 26px; margin: 0 0 14px; }
+.doc-prose h2 {
+  font-size: 20px;
+  margin: 28px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.doc-prose h3 { font-size: 16px; margin: 22px 0 8px; }
+.doc-prose p { margin: 10px 0; }
+.doc-prose ul, .doc-prose ol { margin: 10px 0; padding-left: 22px; }
+.doc-prose li { margin: 4px 0; }
+.doc-prose a { color: var(--gov); font-weight: 600; }
+.doc-prose code {
+  background: #f3f4f8;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 13px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+.doc-prose pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow: auto;
+  font-size: 13px;
+}
+.doc-prose pre code { background: transparent; color: inherit; padding: 0; }
+.doc-prose blockquote {
+  margin: 12px 0;
+  padding: 6px 14px;
+  border-left: 4px solid var(--gov);
+  background: #faf8fd;
+  color: var(--muted);
+}
+.doc-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 13px;
+}
+.doc-prose th, .doc-prose td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.doc-prose th { background: #f6f7fb; font-weight: 700; }
+.doc-prose hr { border: none; border-top: 1px solid var(--line); margin: 22px 0; }
+
 /* ---- Live status bar + chips (Governance / Test Expectations) ----------- */
 .statusbar {
   display: flex;

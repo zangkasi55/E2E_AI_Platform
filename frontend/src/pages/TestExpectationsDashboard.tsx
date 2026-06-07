@@ -63,7 +63,23 @@ function ExpectationTable({
                 <td>
                   <span className={statusClass(item.status)}>{item.status}</span>
                 </td>
-                <td>{item.where}</td>
+                <td>
+                  {item.links && item.links.length > 0 ? (
+                    <span className="evidence-links">
+                      {item.links.map((lnk, i) => (
+                        <span key={lnk.href}>
+                          {i > 0 ? <span className="evidence-sep"> · </span> : null}
+                          <a className="doc-link" href={lnk.href} target="_blank" rel="noopener noreferrer">
+                            {lnk.label}
+                            <span className="doc-link-icon" aria-hidden="true"> ↗</span>
+                          </a>
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    item.where
+                  )}
+                </td>
               </tr>
             ))
           )}

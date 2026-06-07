@@ -10,6 +10,7 @@ import { BankingPage } from "./pages/BankingPage";
 import { TokenMonitorDashboard } from "./pages/TokenMonitorDashboard";
 import { GovernancePage } from "./pages/GovernancePage";
 import { TestExpectationsDashboard } from "./pages/TestExpectationsDashboard";
+import { DocViewer } from "./pages/DocViewer";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
       <Route path="/tokens" element={<TokenMonitorDashboard />} />
       <Route path="/governance" element={<GovernancePage />} />
       <Route path="/test-expectations" element={<TestExpectationsDashboard />} />
+      <Route path="/docs/:slug" element={<DocViewer />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

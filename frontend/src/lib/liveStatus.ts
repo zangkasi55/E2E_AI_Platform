@@ -17,6 +17,7 @@ export interface LiveExpectation {
   item: string;
   status: LiveStatus;
   where: string;
+  links?: Array<{ label: string; href: string }>;
 }
 
 export interface LiveStatusReport {
@@ -135,6 +136,7 @@ export async function probeLiveStatus(): Promise<LiveStatusReport> {
         item: "Production deployment hardening beyond PoC",
         status: "Documented",
         where: "docs/production-design-notes.md",
+        links: [{ label: "docs/production-design-notes.md", href: "/docs/production-design-notes" }],
       },
     ];
 
@@ -161,6 +163,10 @@ export async function probeLiveStatus(): Promise<LiveStatusReport> {
         item: "Release-readiness for production security baseline",
         status: "Documented",
         where: "docs/fit-gap.md and production notes",
+        links: [
+          { label: "docs/fit-gap.md", href: "/docs/fit-gap" },
+          { label: "production notes", href: "/docs/production-design-notes" },
+        ],
       },
     ];
 
