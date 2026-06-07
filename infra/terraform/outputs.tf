@@ -75,6 +75,16 @@ output "toolbridge_identity_client_id" {
   value       = azurerm_user_assigned_identity.toolbridge.client_id
 }
 
+output "tool_bridge_app_client_id" {
+  description = "Client (application) ID of the Entra tool-bridge API app (audience for APIM validate-jwt)."
+  value       = var.enable_entra_identities ? azuread_application.tool_bridge[0].client_id : null
+}
+
+output "agent_identity_client_ids" {
+  description = "Map of logical agent name -> Entra client ID (Agent ID)."
+  value       = var.enable_entra_identities ? { for k, app in azuread_application.agent : k => app.client_id } : {}
+}
+
 output "purview_account_name" {
   description = "Purview account governing the platform (new or existing)."
   value       = local.purview_account_name

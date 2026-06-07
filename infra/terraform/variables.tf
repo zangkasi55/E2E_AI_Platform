@@ -158,6 +158,28 @@ variable "enable_dspm_for_ai" {
 }
 
 # ---------------------------------------------------------------------------
+# Microsoft Entra ID (app registrations + Agent IDs)
+# ---------------------------------------------------------------------------
+variable "enable_entra_identities" {
+  description = "Create Entra app registrations: the tool-bridge API app (the audience the APIM validate-jwt policy checks) and one Agent ID app per logical agent. Requires rights to register applications (e.g. Application Developer)."
+  type        = bool
+  default     = true
+}
+
+variable "agent_identity_names" {
+  description = "Logical agents that each receive a unique Microsoft Entra identity (Agent ID). Mirrors backend/scripts/provision_foundry_agents.py."
+  type        = list(string)
+  default = [
+    "memo-orchestrator",
+    "doc-retrieval",
+    "financial-ratio",
+    "bureau-summary",
+    "memo-assembler",
+    "banking-controller",
+  ]
+}
+
+# ---------------------------------------------------------------------------
 # Azure Policy (governance guardrails)
 # ---------------------------------------------------------------------------
 variable "enable_policy_assignments" {

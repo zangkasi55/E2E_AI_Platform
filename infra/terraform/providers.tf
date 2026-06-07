@@ -20,6 +20,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 3.0"
+    }
     azapi = {
       source  = "Azure/azapi"
       version = "~> 2.0"
@@ -50,6 +54,10 @@ provider "azurerm" {
 }
 
 provider "azapi" {}
+
+# Microsoft Entra ID (Graph) — app registrations, service principals, and the
+# per-agent Agent IDs. Uses the same az CLI / OIDC credentials as azurerm.
+provider "azuread" {}
 
 # Current signed-in principal — used to grant the deployer Key Vault rights so
 # the placeholder secrets can be written during apply.

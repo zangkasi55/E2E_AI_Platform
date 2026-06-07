@@ -23,6 +23,7 @@ Terraform — they target the same resource group and produce the same topology.
 | `search.tf` | Azure AI Search `agpoc-search-dev` (basic, semantic free) |
 | `servicebus.tf` | Service Bus `agpoc-sb-dev` + session-enabled `hitl-approvals` queue |
 | `identity.tf` | 3 user-assigned identities + least-privilege role assignments (incl. Cosmos data-plane) |
+| `entra.tf` | **Microsoft Entra** app registrations: tool-bridge API app (APIM validate-jwt audience + tools.* app roles) and one **Agent ID** app/SP per agent |
 | `apim.tf` | API Management `agpoc-apim-dev`, named values, tool API, raw policy, product, subscription |
 | `functions.tf` | Y1 plan + tools & durable Function Apps (Python 3.11) |
 | `containerapps.tf` | Container Apps env + FastAPI orchestrator (external ingress :8000) |

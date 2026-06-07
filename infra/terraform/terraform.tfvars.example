@@ -29,6 +29,10 @@ use_existing_purview                 = true
 existing_purview_resource_group_name = "rg-isaru66-purview"
 existing_purview_account_name        = "pview-isaru66-default-001"
 
+# --- Microsoft Entra ID (app registrations + Agent IDs) ---
+enable_entra_identities = true # tool-bridge API app + one Agent ID app per agent
+# agent_identity_names  = ["memo-orchestrator", "doc-retrieval", ...]  # defaults to the 6 agents
+
 # --- Defender for Cloud ---
 enable_standard_cspm       = true
 enable_defender_paid_plans = true
