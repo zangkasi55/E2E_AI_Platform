@@ -56,6 +56,86 @@ WORKFLOW_OPT_IN_HEADER = ("Foundry-Features", "WorkflowAgents=V1Preview")
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 
+# --- Tool catalog (single source of truth: app/tools/mcp_schemas.py) ----------
+# Loaded directly by file path so this standalone script does NOT import the
+# backend ``app`` package (and its pydantic settings) just to read the schemas.
+import importlib.util as _ilu
+
+_MCP_PATH = Path(__file__).resolve().parents[1] / "app" / "tools" / "mcp_schemas.py"
+_mcp_spec = _ilu.spec_from_file_location("scbx_mcp_schemas", _MCP_PATH)
+_mcp_mod = _ilu.module_from_spec(_mcp_spec)
+_mcp_spec.loader.exec_module(_mcp_mod)  # type: ignore[union-attr]
+TOOL_SCHEMAS: dict[str, dict] = _mcp_mod.TOOL_SCHEMAS
+
+
+def _function_tool_defs(tool_names: list[str]) -> list[dict]:
+    """Build Foundry function-tool definitions for the given catalog tool names.
+
+    These declare the agent's actions to Foundry so they surface in the portal /
+    Microsoft 365 admin center "Data & tools" tab (the action is still executed
+    by the backend through APIM; the definition makes the capability visible).
+    """
+    defs: list[dict] = []
+    for tname in tool_names:
+        schema = TOOL_SCHEMAS[tname]
+        defs.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": schema["name"],
+                    "description": schema["description"],
+                    "parameters": schema["parameters"],
+                },
+            }
+        )
+    return defs
+
+
+def _knowledge_tool_defs(use_case: str) -> list[dict]:
+    """Optional Azure AI Search knowledge tool (surfaces as a Data source).
+
+    Only emitted when a project search connection id is supplied via
+    ``FOUNDRY_SEARCH_CONNECTION_ID`` (and the agent is a credit-memo agent), so
+    default runs never depend on a connection that may not exist yet.
+    """
+    conn = os.environ.get("FOUNDRY_SEARCH_CONNECTION_ID", "").strip()
+    if use_case != "credit_memo" or not conn:
+        return []
+    return [
+        {
+            "type": "azure_ai_search",
+            "azure_ai_search": {
+                "indexes": [
+                    {
+                        "index_connection_id": conn,
+                        "index_name": os.environ.get("FOUNDRY_SEARCH_INDEX", "memo-corpus"),
+                        "query_type": "simple",
+                    }
+                ]
+            },
+        }
+    ]
+
+
+def _agent_tools(spec: dict) -> list[dict]:
+    """Full Foundry ``tools`` array for an agent: function tools + knowledge."""
+    return _function_tool_defs(list(spec.get("tools", []))) + _knowledge_tool_defs(
+        str(spec["use_case"])
+    )
+
+
+def _tool_sig(tools: list[dict] | None) -> tuple:
+    """Order-independent signature of a tools array, for drift detection."""
+    sig: list[str] = []
+    for tool in tools or []:
+        ttype = tool.get("type")
+        if ttype == "function":
+            sig.append("function:" + tool.get("function", {}).get("name", ""))
+        else:
+            sig.append(str(ttype))
+    return tuple(sorted(sig))
+
+
 # Foundry workflow agents (definition.kind = "workflow"). Each chains one or more
 # of the agents below and surfaces in the portal Workflows (Preview) tab.
 WORKFLOWS: list[dict[str, object]] = [
@@ -81,13 +161,20 @@ WORKFLOWS: list[dict[str, object]] = [
 ]
 
 # --- Agent catalog: must match backend/app/orchestration/*.py -----------------
-# (logical name with underscores, model deployment, instructions, use_case)
-AGENTS: list[dict[str, str]] = [
+# (logical name with underscores, model deployment, instructions, use_case, tools)
+AGENTS: list[dict[str, object]] = [
     # UC1 — Credit Memo Drafting
     {
         "name": "memo_orchestrator",
         "model": "gpt-4o",
         "use_case": "credit_memo",
+        "tools": [
+            "search_documents",
+            "get_financials",
+            "calculate_ratios",
+            "get_bureau_report",
+            "render_memo",
+        ],
         "instructions": (
             "You are the lead orchestrator for SCBX's SME Credit Memo Drafting "
             "assistant, supporting credit analysts at a Thai commercial bank. You "
@@ -119,6 +206,7 @@ AGENTS: list[dict[str, str]] = [
         "name": "doc_retrieval",
         "model": "gpt-4o-mini",
         "use_case": "credit_memo",
+        "tools": ["search_documents"],
         "instructions": (
             "You are the grounded document-retrieval specialist for SCBX's SME "
             "credit memo workflow. You locate and extract relevant evidence from the "
@@ -146,6 +234,7 @@ AGENTS: list[dict[str, str]] = [
         "name": "financial_ratio",
         "model": "gpt-4o-mini",
         "use_case": "credit_memo",
+        "tools": ["get_financials", "calculate_ratios"],
         "instructions": (
             "You are the financial-ratio analyst for SCBX's SME credit memo "
             "workflow. You interpret pre-computed financial ratios (liquidity, "
@@ -172,6 +261,7 @@ AGENTS: list[dict[str, str]] = [
         "name": "bureau_summary",
         "model": "gpt-4o-mini",
         "use_case": "credit_memo",
+        "tools": ["get_bureau_report"],
         "instructions": (
             "You are the credit-bureau analyst for SCBX's SME credit memo workflow. "
             "You summarize a credit-bureau report (e.g., NCB) for the applicant and "
@@ -196,6 +286,7 @@ AGENTS: list[dict[str, str]] = [
         "name": "memo_assembler",
         "model": "gpt-4o",
         "use_case": "credit_memo",
+        "tools": ["render_memo"],
         "instructions": (
             "You are the memo assembler for SCBX's SME Credit Memo Drafting "
             "assistant. You combine the section inputs from the specialist agents "
@@ -226,6 +317,12 @@ AGENTS: list[dict[str, str]] = [
         "name": "banking_controller",
         "model": "gpt-4o",
         "use_case": "banking",
+        "tools": [
+            "get_balance",
+            "resolve_payee",
+            "check_transfer_eligibility",
+            "request_transaction_handoff",
+        ],
         "instructions": (
             "You are the conversational banking controller for SCBX's UC2 assistant, "
             "helping retail customers carry out everyday banking conversationally "
@@ -330,6 +427,7 @@ def create_version(endpoint: str, token: str, name: str, spec: dict) -> dict:
             "kind": "prompt",
             "model": spec["model"],
             "instructions": spec["instructions"],
+            "tools": _agent_tools(spec),
         }
     }
     status, payload = _request(
@@ -350,6 +448,7 @@ def create_agent(endpoint: str, token: str, spec: dict) -> dict:
             "kind": "prompt",
             "model": spec["model"],
             "instructions": spec["instructions"],
+            "tools": _agent_tools(spec),
         },
     }
     status, payload = _request(
@@ -447,6 +546,7 @@ def main() -> int:
             drift = (
                 current.get("instructions") != spec["instructions"]
                 or current.get("model") != spec["model"]
+                or _tool_sig(current.get("tools")) != _tool_sig(_agent_tools(spec))
             )
             if drift:
                 updated = create_version(endpoint, token, fname, spec)

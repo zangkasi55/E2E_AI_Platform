@@ -1,0 +1,73 @@
+flowchart TB
+    User([Banking / Credit Analyst])
+
+    subgraph Edge["Presentation & Gateway"]
+        SWA["Azure Static Web App<br/>React UI: credit-memo · governance · token meter"]
+        APIM["Azure API Management<br/>AI Gateway · validate-jwt · per-tool scope check"]
+    end
+
+    subgraph Compute["Agent Runtime"]
+        ACA["Azure Container Apps<br/>Orchestrator / Backend API"]
+        FUNC["Azure Functions<br/>Tool Bridge: search · handoff tools"]
+        FOUNDRY["Azure AI Foundry + Azure OpenAI<br/>6 agents: memo-orchestrator, doc-retrieval,<br/>financial-ratio, bureau-summary, memo-assembler, banking-controller"]
+    end
+
+    subgraph Data["Data Plane"]
+        COSMOS[("Cosmos DB<br/>state · audit · HITL")]
+        SEARCH[("AI Search<br/>document retrieval")]
+        BLOB[("Storage<br/>documents")]
+        SB["Service Bus<br/>async / handoff"]
+    end
+
+    subgraph Identity["Identity - Microsoft Entra ID"]
+        APPREG["Tool-Bridge API App<br/>audience api://agpoc-tool-bridge<br/>roles: tools.execute / read / handoff"]
+        AGENTID["Agent IDs<br/>1 Entra identity per agent"]
+        UAMI["User-Assigned Managed Identities<br/>orchestrator · toolbridge · ui"]
+        KV["Key Vault<br/>secrets"]
+    end
+
+    subgraph Gov["Governance & Threat Posture"]
+        PURVIEW["Microsoft Purview<br/>classification · lineage"]
+        DEFENDER["Defender for Cloud<br/>+ DSPM for AI"]
+        POLICY["Azure Policy<br/>AI/data governance initiative"]
+    end
+
+    subgraph Obs["Observability"]
+        APPI["Application Insights"]
+        LAW["Log Analytics<br/>token-usage KQL"]
+    end
+
+    User --> SWA --> APIM
+    APIM -->|JWT validated| ACA
+    ACA --> FOUNDRY
+    ACA --> FUNC
+    FUNC --> SEARCH
+    ACA --> COSMOS
+    ACA --> SB
+    FUNC --> BLOB
+
+    APPREG -. validated audience .-> APIM
+    UAMI -. app role grant .-> APPREG
+    AGENTID -. own identity .-> FOUNDRY
+    ACA --- UAMI
+    ACA --- KV
+
+    BLOB -. scanned .-> PURVIEW
+    FOUNDRY -. monitored .-> DEFENDER
+    Compute -. guardrails .-> POLICY
+    ACA --> APPI --> LAW
+    FOUNDRY -. token usage .-> APPI
+
+    classDef edge fill:#E3F2FD,stroke:#1565C0,color:#0D47A1;
+    classDef compute fill:#E8F5E9,stroke:#2E7D32,color:#1B5E20;
+    classDef data fill:#FFF3E0,stroke:#EF6C00,color:#E65100;
+    classDef identity fill:#F3E5F5,stroke:#6A1B9A,color:#4A148C;
+    classDef gov fill:#FCE4EC,stroke:#AD1457,color:#880E4F;
+    classDef obs fill:#ECEFF1,stroke:#455A64,color:#263238;
+
+    class SWA,APIM edge;
+    class ACA,FUNC,FOUNDRY compute;
+    class COSMOS,SEARCH,BLOB,SB data;
+    class APPREG,AGENTID,UAMI,KV identity;
+    class PURVIEW,DEFENDER,POLICY gov;
+    class APPI,LAW obs;
