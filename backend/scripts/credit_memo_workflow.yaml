@@ -42,3 +42,27 @@ trigger:
       conversationId: =System.ConversationId
       agent:
         name: memo-assembler
+    # --- Human-in-the-loop approval gate -------------------------------------
+    # No memo is finalized without a human decision. This action PAUSES the
+    # workflow and waits for the reviewer's approve / reject response (delivered
+    # via the configured channel, e.g. Teams). It mirrors the Durable Functions
+    # 'wait_for_external_event' + Service Bus 'hitl-approvals' pause that the
+    # Python memo-orchestrator enforces at runtime.
+    - kind: Question
+      id: human_approval
+      displayName: Human approval (HITL)
+      conversationId: =System.ConversationId
+      variable: =Topic.ReviewerDecision
+      prompt: >-
+        Review the assembled draft credit memo and the policy-gate
+        recommendation. Reply "approve" to finalize the memo, or "reject" to
+        decline it. No memo is finalized without your decision.
+    # --- Finalize only after the human decision ------------------------------
+    - kind: InvokeAzureAgent
+      id: finalize_memo
+      displayName: Finalize or decline per human decision
+      conversationId: =System.ConversationId
+      agent:
+        name: memo-orchestrator
+      input:
+        reviewer_decision: =Topic.ReviewerDecision

@@ -94,6 +94,76 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
             "required": ["sections", "template_id"],
         },
     },
+    # ---- UC1: Governance gates (deterministic policy boundary) -------------
+    # These expose the credit-memo governance gates as first-class, scope-checked
+    # catalog tools so they are advertised in the Foundry "Data & tools" tab and
+    # callable via function-calling. They are ALWAYS executed in-process (never
+    # routed to an external backend) so the platform — not the model or a remote
+    # service — owns the hard sensitivity / DSPM / policy guarantees.
+    "classify_document_sensitivity": {
+        "name": "classify_document_sensitivity",
+        "description": (
+            "Sensitivity pre-gate. Resolve an uploaded document's Microsoft Purview "
+            "sensitivity label and ingestion decision. Confidential / Highly "
+            "Confidential files return blocked=true and must NOT be ingested."
+        ),
+        "use_case": "credit_memo",
+        "x-scope": "tools.sensitivity.classify",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_name": {"type": "string", "description": "Uploaded file name to classify."},
+                "mime_type": {"type": "string", "description": "Optional MIME type of the file."},
+            },
+            "required": ["file_name"],
+        },
+    },
+    "record_dspm_event": {
+        "name": "record_dspm_event",
+        "description": (
+            "DSPM for AI. Record a sensitivity-label decision as a Microsoft Purview / "
+            "Defender for Cloud data-security-posture event (and emit telemetry) so it "
+            "appears in the DSPM for AI activity log."
+        ),
+        "use_case": "credit_memo",
+        "x-scope": "tools.dspm.write",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": "Run id the event belongs to."},
+                "file_name": {"type": "string", "description": "File name the decision applies to."},
+                "label_result": {
+                    "type": "object",
+                    "description": "Sensitivity result as returned by classify_document_sensitivity.",
+                },
+                "user": {"type": "string", "description": "User/principal that triggered the scan."},
+                "use_case": {"type": "string", "description": "Use case id, e.g. credit_memo."},
+            },
+            "required": ["run_id", "file_name", "label_result", "user"],
+        },
+    },
+    "evaluate_credit_policy": {
+        "name": "evaluate_credit_policy",
+        "description": (
+            "Policy post-gate. Turn per-domain verification checks into a deterministic "
+            "credit recommendation (approve | request_edits | reject). A hard-reject "
+            "marker breach forces reject and sets hard_reject=true; this overrides any "
+            "later human approve."
+        ),
+        "use_case": "credit_memo",
+        "x-scope": "tools.policy.evaluate",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "verifications": {
+                    "type": "array",
+                    "description": "List of verification results, each {passed, checks:[{name, ok, detail}]}.",
+                    "items": {"type": "object"},
+                },
+            },
+            "required": ["verifications"],
+        },
+    },
     # ---- UC2: Conversational Banking --------------------------------------
     "get_balance": {
         "name": "get_balance",

@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     # Azure OpenAI chat call. Requires ``foundry_project_endpoint`` and a
     # populated ``foundry_agent_ids.json``. Implies live model calls.
     use_foundry_agents: bool = False
+    # When true, the run is orchestrated by the provisioned Foundry **workflow
+    # agents** (``definition.kind = "workflow"``) instead of the in-process
+    # Python agent loop. The workflow drives the child agents server-side
+    # (including the credit-memo HITL ``Question`` node); Python still enforces
+    # the deterministic guardrail / sensitivity pre-gates, the policy
+    # post-gates, and owns the AWAITING_APPROVAL state machine.
+    use_foundry_workflows: bool = False
+    # Registered workflow-agent names (see provision_foundry_agents.WORKFLOWS).
+    foundry_credit_memo_workflow: str = "credit-memo-workflow"
+    foundry_banking_workflow: str = "banking-control-workflow"
     environment: str = "dev"
     log_level: str = "INFO"
 
@@ -149,7 +159,7 @@ class Settings(BaseSettings):
         still streams gen_ai spans + token usage into the Foundry project's
         connected Application Insights.
         """
-        return (not self.mock_mode) or self.live_llm or self.use_foundry_agents
+        return (not self.mock_mode) or self.live_llm or self.use_foundry_agents or self.use_foundry_workflows
 
     @property
     def data_path(self) -> Path:

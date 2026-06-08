@@ -174,6 +174,9 @@ AGENTS: list[dict[str, object]] = [
             "calculate_ratios",
             "get_bureau_report",
             "render_memo",
+            "classify_document_sensitivity",
+            "record_dspm_event",
+            "evaluate_credit_policy",
         ],
         "instructions": (
             "You are the lead orchestrator for SCBX's SME Credit Memo Drafting "
@@ -206,7 +209,7 @@ AGENTS: list[dict[str, object]] = [
         "name": "doc_retrieval",
         "model": "gpt-4o-mini",
         "use_case": "credit_memo",
-        "tools": ["search_documents"],
+        "tools": ["search_documents", "classify_document_sensitivity", "record_dspm_event"],
         "instructions": (
             "You are the grounded document-retrieval specialist for SCBX's SME "
             "credit memo workflow. You locate and extract relevant evidence from the "
@@ -286,7 +289,7 @@ AGENTS: list[dict[str, object]] = [
         "name": "memo_assembler",
         "model": "gpt-4o",
         "use_case": "credit_memo",
-        "tools": ["render_memo"],
+        "tools": ["render_memo", "evaluate_credit_policy"],
         "instructions": (
             "You are the memo assembler for SCBX's SME Credit Memo Drafting "
             "assistant. You combine the section inputs from the specialist agents "

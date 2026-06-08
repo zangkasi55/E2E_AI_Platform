@@ -17,6 +17,8 @@ import re
 from typing import Any
 
 from ..agents.base import Agent
+from ..agents.foundry_workflow_client import invoke_workflow, resume_workflow
+from ..config import settings
 from ..durable.hitl import hitl_gateway
 from ..models import (
     ApprovalDecision,
@@ -28,8 +30,6 @@ from ..models import (
     UseCase,
 )
 from ..telemetry.audit import audit_store
-from ..telemetry.purview_audit import emit_label_enforcement_event
-from ..governance.sensitivity import resolve_sensitivity_label
 from ..tools import registry
 
 USE_CASE = UseCase.CREDIT_MEMO.value
@@ -329,45 +329,6 @@ class MemoOrchestrator:
 
         return {"passed": all(c["ok"] for c in checks), "checks": checks}
 
-
-    @staticmethod
-    def _build_approval_guidance(*verifications: dict[str, Any]) -> dict[str, Any]:
-        should_approve: list[str] = []
-        should_not_approve: list[str] = []
-        for verification in verifications:
-            for check in verification.get("checks", []):
-                reason = f"{check['name']}: {check['detail']}"
-                if check.get("ok"):
-                    should_approve.append(reason)
-                else:
-                    should_not_approve.append(reason)
-
-        hard_reject_markers = {
-            "dscr_meets_threshold",
-            "leverage_within_threshold",
-            "ebitda_margin_non_negative",
-            "bureau_score_acceptable",
-            "recent_delinquencies_clear",
-            # Evidence read directly from the attached credit file's financials.
-            # Any breach makes the case a hard reject regardless of the dataset
-            # row — the agent decides on the data, not on the file's advice.
-            "document_ebitda_non_negative",
-            "document_solvent",
-            "document_dscr_meets_threshold",
-            "document_bureau_score_acceptable",
-            "document_recent_delinquencies_clear",
-            "document_current_ratio_ok",
-        }
-        hard_reject = any(
-            reason.split(":", 1)[0] in hard_reject_markers for reason in should_not_approve
-        )
-        recommendation = "reject" if hard_reject else ("approve" if not should_not_approve else "request_edits")
-        return {
-            "recommendation": recommendation,
-            "should_approve": should_approve,
-            "should_not_approve": should_not_approve,
-        }
-
     # -- step helper --------------------------------------------------------
     def _trace(
         self,
@@ -410,7 +371,14 @@ class MemoOrchestrator:
         doc_excerpt = doc_content[:4000]
         step = 0
 
-        # --- Step 0: plan ---------------------------------------------------
+        # --- Step 0: plan / orchestrate ------------------------------------
+        # When ``use_foundry_workflows`` is on, the credit-memo **workflow agent**
+        # drives the five child agents (and the HITL Question node) server-side.
+        # Python remains the deterministic policy boundary: it still fetches tool
+        # data for the gates, runs verification, and owns the AWAITING_APPROVAL
+        # state machine below.
+        wf = settings.use_foundry_workflows
+        wf_handle: dict[str, Any] | None = None
         plan = [
             "doc_retrieval: gather approved-source context",
             "financial_ratio: compute + interpret ratios",
@@ -418,13 +386,46 @@ class MemoOrchestrator:
             "memo_assembler: assemble draft",
             "HITL: pause for human approval",
         ]
-        self.agents["memo_orchestrator"].run_step(
-            run_id=run.run_id,
-            step=step,
-            user_prompt=f"Plan credit memo for {applicant_id} using template {request.template_id}.",
-            mock_response="PLAN:\n- " + "\n- ".join(plan),
-        )
-        self._trace(run, step, "memo_orchestrator", "plan", out={"plan": plan})
+        if wf:
+            wf_result = invoke_workflow(
+                settings.foundry_credit_memo_workflow,
+                (
+                    f"Draft an SME credit memo for applicant {applicant_id} using "
+                    f"template {request.template_id}. Use your attached tools to "
+                    f"retrieve documents, financials and bureau data, assemble the "
+                    f"memo, then pause for human approval."
+                    + (f"\n\nAttached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "")
+                ),
+            )
+            wf_handle = {
+                "workflow": wf_result.workflow_name,
+                "response_id": wf_result.response_id,
+                "conversation_id": wf_result.conversation_id,
+            }
+            self._trace(
+                run,
+                step,
+                "memo_orchestrator",
+                "invoke_workflow",
+                inp={"workflow": wf_result.workflow_name, "applicant_id": applicant_id},
+                out={
+                    "engine": "foundry_workflow",
+                    "status": wf_result.status,
+                    "awaiting_input": wf_result.awaiting_input,
+                    "response_id": wf_result.response_id,
+                    "mocked": wf_result.mocked,
+                    "plan": plan,
+                },
+                note=f"Run orchestrated by Foundry workflow agent '{wf_result.workflow_name}'.",
+            )
+        else:
+            self.agents["memo_orchestrator"].run_step(
+                run_id=run.run_id,
+                step=step,
+                user_prompt=f"Plan credit memo for {applicant_id} using template {request.template_id}.",
+                mock_response="PLAN:\n- " + "\n- ".join(plan),
+            )
+            self._trace(run, step, "memo_orchestrator", "plan", out={"plan": plan})
 
         # --- Purview / DSPM sensitivity-label gate -------------------------
         # Before any document is ingested, resolve its Microsoft Purview
@@ -432,16 +433,21 @@ class MemoOrchestrator:
         # rejected and the decision is logged to Purview + DSPM for AI.
         if dr_document:
             step += 1
-            label_result = resolve_sensitivity_label(
+            # Sensitivity pre-gate + DSPM event are governed catalog tools
+            # (scope-checked, advertised in Foundry "Data & tools"). They run
+            # in-process so the platform owns the block decision deterministically.
+            label_result = registry.classify_document_sensitivity(
                 dr_document.get("file_name", ""),
                 dr_document.get("mime_type"),
+                caller_agent="doc_retrieval",
             )
-            event = emit_label_enforcement_event(
+            event = registry.record_dspm_event(
                 run_id=run.run_id,
                 file_name=dr_document.get("file_name", ""),
                 label_result=label_result,
                 user=request.requested_by,
                 use_case=USE_CASE,
+                caller_agent="doc_retrieval",
             )
             if label_result["blocked"]:
                 self._trace(
@@ -495,12 +501,13 @@ class MemoOrchestrator:
             retrieval_input["attached_document"] = dr_document
             retrieval_ctx["attached_document"] = dr_document
         retrieval_verification = self._verify_doc_retrieval(retrieval_ctx, has_attachment=bool(dr_document))
-        self.agents["doc_retrieval"].run_step(
-            run_id=run.run_id,
-            step=step,
-            user_prompt=f"Summarize grounded context: {retrieval_ctx}",
-            mock_response=f"Retrieved {len(docs['results'])} applicant + {len(policy_docs['results'])} policy chunks.",
-        )
+        if not wf:
+            self.agents["doc_retrieval"].run_step(
+                run_id=run.run_id,
+                step=step,
+                user_prompt=f"Summarize grounded context: {retrieval_ctx}",
+                mock_response=f"Retrieved {len(docs['results'])} applicant + {len(policy_docs['results'])} policy chunks.",
+            )
         self._trace(
             run,
             step,
@@ -515,20 +522,25 @@ class MemoOrchestrator:
         step += 1
         financials = registry.get_financials(applicant_id, caller_agent="financial_ratio")
         ratios = registry.calculate_ratios(financials, caller_agent="financial_ratio")
-        ratio_agent = self.agents["financial_ratio"].run_step(
-            run_id=run.run_id,
-            step=step,
-            user_prompt=(
-                f"Analyse whether the financials support approve or reject for {applicant_id}. "
-                f"Computed ratios: {ratios}. "
-                + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "No attached document text was provided.")
-            ),
-            mock_response=(
-                f"DSCR {ratios.get('dscr')}x, net debt/EBITDA {ratios.get('net_debt_to_ebitda')}x, "
-                f"current ratio {ratios.get('current_ratio')}, EBITDA margin {ratios.get('ebitda_margin_pct')}%, "
-                f"revenue CAGR {ratios.get('revenue_cagr_pct')}%."
-            ),
+        _ratio_mock = (
+            f"DSCR {ratios.get('dscr')}x, net debt/EBITDA {ratios.get('net_debt_to_ebitda')}x, "
+            f"current ratio {ratios.get('current_ratio')}, EBITDA margin {ratios.get('ebitda_margin_pct')}%, "
+            f"revenue CAGR {ratios.get('revenue_cagr_pct')}%."
         )
+        if wf:
+            # The financial-ratio agent was invoked server-side by the workflow.
+            ratio_text = _ratio_mock
+        else:
+            ratio_text = self.agents["financial_ratio"].run_step(
+                run_id=run.run_id,
+                step=step,
+                user_prompt=(
+                    f"Analyse whether the financials support approve or reject for {applicant_id}. "
+                    f"Computed ratios: {ratios}. "
+                    + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "No attached document text was provided.")
+                ),
+                mock_response=_ratio_mock,
+            ).text
         ratios_verification = self._verify_financials(ratios)
         self._trace(
             run,
@@ -546,19 +558,23 @@ class MemoOrchestrator:
         # --- Step 3: bureau_summary ----------------------------------------
         step += 1
         bureau = registry.get_bureau_report(applicant_id, caller_agent="bureau_summary")
-        bureau_agent = self.agents["bureau_summary"].run_step(
-            run_id=run.run_id,
-            step=step,
-            user_prompt=(
-                f"Assess whether the credit history supports approve or reject for {applicant_id}. "
-                f"Bureau report: {bureau}. "
-                + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "No attached document text was provided.")
-            ),
-            mock_response=(
-                f"Bureau score {bureau.get('score')} ({bureau.get('score_band')}); "
-                f"{bureau.get('delinquencies_12m')} delinquencies in 12m; {bureau.get('notes')}"
-            ),
+        _bureau_mock = (
+            f"Bureau score {bureau.get('score')} ({bureau.get('score_band')}); "
+            f"{bureau.get('delinquencies_12m')} delinquencies in 12m; {bureau.get('notes')}"
         )
+        if wf:
+            bureau_text = _bureau_mock
+        else:
+            bureau_text = self.agents["bureau_summary"].run_step(
+                run_id=run.run_id,
+                step=step,
+                user_prompt=(
+                    f"Assess whether the credit history supports approve or reject for {applicant_id}. "
+                    f"Bureau report: {bureau}. "
+                    + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "No attached document text was provided.")
+                ),
+                mock_response=_bureau_mock,
+            ).text
         bureau_verification = self._verify_bureau(bureau)
         self._trace(
             run,
@@ -580,9 +596,9 @@ class MemoOrchestrator:
             request=request,
             retrieval_ctx=retrieval_ctx,
             ratios=ratios,
-            ratio_text=ratio_agent.text,
+            ratio_text=ratio_text,
             bureau=bureau,
-            bureau_text=bureau_agent.text,
+            bureau_text=bureau_text,
         )
         draft = registry.render_memo(
             sections=sections,
@@ -596,29 +612,33 @@ class MemoOrchestrator:
         # policy gates, so a case whose data breaches policy rejects even if the
         # dataset row would pass. The file's own recommendation is ignored.
         document_verification = self._verify_document(doc_content)
-        approval_guidance = self._build_approval_guidance(
-            retrieval_verification,
-            ratios_verification,
-            bureau_verification,
-            draft_verification,
-            document_verification,
+        approval_guidance = registry.evaluate_credit_policy(
+            [
+                retrieval_verification,
+                ratios_verification,
+                bureau_verification,
+                draft_verification,
+                document_verification,
+            ],
+            caller_agent="memo_assembler",
         )
         run.draft_memo["approval_guidance"] = approval_guidance
-        self.agents["memo_assembler"].run_step(
-            run_id=run.run_id,
-            step=step,
-            user_prompt=(
-                f"Assemble the draft credit memo for {applicant_id} and state the final "
-                f"recommendation (approve or reject). Policy-gate outcome: "
-                f"recommendation={approval_guidance['recommendation']}; "
-                f"failing gates={approval_guidance['should_not_approve'] or 'none'}. "
-                + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "")
-            ),
-            mock_response=(
-                f"Assembled draft with {len(draft.get('sections', []))} sections (status=draft); "
-                f"recommendation={approval_guidance['recommendation']}."
-            ),
-        )
+        if not wf:
+            self.agents["memo_assembler"].run_step(
+                run_id=run.run_id,
+                step=step,
+                user_prompt=(
+                    f"Assemble the draft credit memo for {applicant_id} and state the final "
+                    f"recommendation (approve or reject). Policy-gate outcome: "
+                    f"recommendation={approval_guidance['recommendation']}; "
+                    f"failing gates={approval_guidance['should_not_approve'] or 'none'}. "
+                    + (f"Attached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "")
+                ),
+                mock_response=(
+                    f"Assembled draft with {len(draft.get('sections', []))} sections (status=draft); "
+                    f"recommendation={approval_guidance['recommendation']}."
+                ),
+            )
         self._trace(
             run,
             step,
@@ -635,7 +655,11 @@ class MemoOrchestrator:
 
         # --- Step 5: HITL pause --------------------------------------------
         step += 1
-        hitl_gateway.pause_for_approval(run.run_id, draft)
+        pending = hitl_gateway.pause_for_approval(run.run_id, draft)
+        if wf_handle:
+            # Persist the workflow resume handle so approve() can route the
+            # reviewer's decision back into the workflow's HITL Question node.
+            pending.metadata["workflow"] = wf_handle
         run.status = RunStatus.AWAITING_APPROVAL
         self._trace(
             run,
@@ -664,9 +688,38 @@ class MemoOrchestrator:
         if run.status != RunStatus.AWAITING_APPROVAL:
             raise ValueError(f"run {run_id} is not awaiting approval (status={run.status}).")
 
+        pending = hitl_gateway.get(run_id)
+        wf_handle = (pending.metadata.get("workflow") if pending else None) or None
         hitl_gateway.resume(run_id, decision)
         run.approval = decision
         step = len(run.steps)
+
+        # If this run was orchestrated by the Foundry workflow agent, route the
+        # reviewer's decision back into the workflow's HITL Question node so the
+        # declarative graph can finalize server-side. This is best-effort: the
+        # deterministic policy gates below remain the source of truth.
+        if wf_handle:
+            answer = "approve" if decision.approved else "reject"
+            wf_res = resume_workflow(
+                wf_handle.get("workflow") or settings.foundry_credit_memo_workflow,
+                wf_handle.get("response_id"),
+                answer,
+                conversation_id=wf_handle.get("conversation_id"),
+            )
+            self._trace(
+                run,
+                step,
+                "memo_orchestrator",
+                "resume_workflow",
+                out={
+                    "engine": "foundry_workflow",
+                    "decision": answer,
+                    "status": wf_res.status,
+                    "mocked": wf_res.mocked,
+                },
+                note="Reviewer decision routed to the Foundry workflow HITL node.",
+            )
+            step = len(run.steps)
 
         guidance = ((run.draft_memo or {}).get("approval_guidance") or {}) if run.draft_memo else {}
         if decision.approved and guidance.get("recommendation") == "reject":
@@ -754,11 +807,14 @@ class MemoOrchestrator:
         live mode; here we deterministically synthesize readable bodies."""
         dscr = ratios.get("dscr")
         nde = ratios.get("net_debt_to_ebitda")
-        guidance = self._build_approval_guidance(
-            self._verify_doc_retrieval(retrieval_ctx, has_attachment=bool(request.dr_document)),
-            self._verify_financials(ratios),
-            self._verify_bureau(bureau),
-            {"checks": []},
+        guidance = registry.evaluate_credit_policy(
+            [
+                self._verify_doc_retrieval(retrieval_ctx, has_attachment=bool(request.dr_document)),
+                self._verify_financials(ratios),
+                self._verify_bureau(bureau),
+                {"checks": []},
+            ],
+            caller_agent="memo_assembler",
         )
         recommendation = guidance.get("recommendation", "request_edits")
         if recommendation == "approve":

@@ -57,6 +57,9 @@ DEFAULT_GRANTED_SCOPES: set[str] = {
     "tools.ratios.compute",
     "tools.bureau.read",
     "tools.memo.write",
+    "tools.sensitivity.classify",
+    "tools.dspm.write",
+    "tools.policy.evaluate",
     "tools.balance.read",
     "tools.payee.read",
     "tools.transfer.evaluate",
@@ -325,6 +328,106 @@ def render_memo(
         mock,
         caller_agent=caller_agent,
     )
+
+
+# ===========================================================================
+# UC1 — Governance gate tools (deterministic policy boundary)
+# ===========================================================================
+# The sensitivity pre-gate, DSPM-for-AI event sink and credit-policy post-gate
+# exposed as first-class, scope-checked catalog tools. Unlike the data tools
+# above they are NEVER routed to an external backend via APIM: the sensitivity,
+# DSPM and policy decisions must stay in-process so the platform — not the model
+# or a remote service — owns the hard guarantees. The scope check still applies,
+# so an agent can only call a gate it was granted.
+
+# Hard-reject markers: a breach of any of these makes the case a hard reject
+# regardless of other signals (the platform decides on the data, never on advice
+# written in the uploaded file).
+_HARD_REJECT_MARKERS: set[str] = {
+    "dscr_meets_threshold",
+    "leverage_within_threshold",
+    "ebitda_margin_non_negative",
+    "bureau_score_acceptable",
+    "recent_delinquencies_clear",
+    "document_ebitda_non_negative",
+    "document_solvent",
+    "document_dscr_meets_threshold",
+    "document_bureau_score_acceptable",
+    "document_recent_delinquencies_clear",
+    "document_current_ratio_ok",
+}
+
+
+def classify_document_sensitivity(
+    file_name: str,
+    mime_type: Optional[str] = None,
+    *,
+    granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """Sensitivity pre-gate: resolve the Microsoft Purview label + ingestion
+    decision for an uploaded document. Confidential / Highly Confidential files
+    return ``blocked=true`` and must not be ingested by the agent."""
+    _check_scope("classify_document_sensitivity", granted_scopes)
+    from ..governance.sensitivity import resolve_sensitivity_label
+
+    return resolve_sensitivity_label(file_name, mime_type)
+
+
+def record_dspm_event(
+    run_id: str,
+    file_name: str,
+    label_result: dict[str, Any],
+    user: str,
+    use_case: str = "credit_memo",
+    *,
+    granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """DSPM for AI: record a sensitivity-label decision as a Microsoft Purview /
+    Defender for Cloud data-security-posture event (and emit telemetry)."""
+    _check_scope("record_dspm_event", granted_scopes)
+    from ..telemetry.purview_audit import emit_label_enforcement_event
+
+    return emit_label_enforcement_event(
+        run_id=run_id,
+        file_name=file_name,
+        label_result=label_result,
+        user=user,
+        use_case=use_case,
+    )
+
+
+def evaluate_credit_policy(
+    verifications: list[dict[str, Any]],
+    *,
+    granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """Policy post-gate: turn the per-domain verification checks into a credit
+    recommendation. Returns ``recommendation`` (approve | request_edits |
+    reject), the passing/failing reasons, and ``hard_reject``. A hard-reject
+    marker breach forces ``reject`` and overrides any later human approve."""
+    _check_scope("evaluate_credit_policy", granted_scopes)
+    should_approve: list[str] = []
+    should_not_approve: list[str] = []
+    for verification in verifications:
+        for check in (verification or {}).get("checks", []):
+            reason = f"{check['name']}: {check['detail']}"
+            if check.get("ok"):
+                should_approve.append(reason)
+            else:
+                should_not_approve.append(reason)
+    hard_reject = any(
+        reason.split(":", 1)[0] in _HARD_REJECT_MARKERS for reason in should_not_approve
+    )
+    recommendation = "reject" if hard_reject else ("approve" if not should_not_approve else "request_edits")
+    return {
+        "recommendation": recommendation,
+        "should_approve": should_approve,
+        "should_not_approve": should_not_approve,
+        "hard_reject": hard_reject,
+    }
 
 
 # ===========================================================================
