@@ -77,6 +77,15 @@ param liveLlm bool = true
 @description('Bind in-code agents to the live Foundry agents/workflows.')
 param useFoundryAgents bool = true
 
+@description('Drive UC1/UC2 orchestration with the provisioned Foundry workflow agents (server-side agent workflow incl. the HITL Question node). The Python orchestrator still owns the deterministic policy gates + AWAITING_APPROVAL state machine.')
+param useFoundryWorkflows bool = true
+
+@description('Registered credit-memo workflow agent name (provision_foundry_agents.WORKFLOWS).')
+param creditMemoWorkflow string = 'credit-memo-workflow'
+
+@description('Registered banking-control workflow agent name (provision_foundry_agents.WORKFLOWS).')
+param bankingWorkflow string = 'banking-control-workflow'
+
 var tags = {
   project: 'agentic-ai-poc'
   env: env
@@ -201,6 +210,9 @@ resource acaApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'LIVE_LLM', value: string(liveLlm) }
             { name: 'MOCK_MODE', value: string(mockMode) }
             { name: 'USE_FOUNDRY_AGENTS', value: string(useFoundryAgents) }
+            { name: 'USE_FOUNDRY_WORKFLOWS', value: string(useFoundryWorkflows) }
+            { name: 'FOUNDRY_CREDIT_MEMO_WORKFLOW', value: creditMemoWorkflow }
+            { name: 'FOUNDRY_BANKING_WORKFLOW', value: bankingWorkflow }
             { name: 'FOUNDRY_PROJECT_ENDPOINT', value: foundryProjectEndpoint }
             { name: 'FOUNDRY_PROJECT_NAME', value: foundryProjectName }
           ]
