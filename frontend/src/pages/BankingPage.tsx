@@ -271,6 +271,32 @@ export function BankingPage() {
       <main className="page">
         <div className="layout">
           <div className="col">
+            <EkycGate
+              active={player.status === "awaiting_ekyc"}
+              confirmed={player.ekycConfirmed}
+              failed={player.ekycFailed}
+              cancelCount={player.ekycCancelCount}
+              maxCancels={2}
+              userId={plan?.sender.user_id}
+              onConfirm={player.ekycConfirm}
+              onCancel={player.ekycCancel}
+            />
+
+            {plan?.outcome === "escalate_approval" ? (
+              <TransferApprovalGate
+                active={player.status === "awaiting_approval"}
+                resolved={!!player.hitlDecision && (player.status === "done" || player.status === "blocked")}
+                decision={player.hitlDecision}
+                reason={player.hitlReason}
+                amount={plan.amount ?? 0}
+                limit={transferLimit}
+                currency={BANK_CURRENCY}
+                payeeName={plan.recipient ? `${plan.recipient.display_name} (${plan.recipient.alias})` : plan.recipientName}
+                onApprove={player.approve}
+                onReject={player.reject}
+              />
+            ) : null}
+
             <div className="panel">
               <h2>Customer conversation</h2>
               <p className="sub">A mock banking chat. Pick the account you are speaking as, type a request, then press Play to run it. Toggle the unsafe instruction to see deterministic guardrails block it.</p>
@@ -361,32 +387,6 @@ export function BankingPage() {
               <h2>Current step</h2>
               <ToolCallCard step={c} />
             </div>
-
-            <EkycGate
-              active={player.status === "awaiting_ekyc"}
-              confirmed={player.ekycConfirmed}
-              failed={player.ekycFailed}
-              cancelCount={player.ekycCancelCount}
-              maxCancels={2}
-              userId={plan?.sender.user_id}
-              onConfirm={player.ekycConfirm}
-              onCancel={player.ekycCancel}
-            />
-
-            {plan?.outcome === "escalate_approval" ? (
-              <TransferApprovalGate
-                active={player.status === "awaiting_approval"}
-                resolved={!!player.hitlDecision && (player.status === "done" || player.status === "blocked")}
-                decision={player.hitlDecision}
-                reason={player.hitlReason}
-                amount={plan.amount ?? 0}
-                limit={transferLimit}
-                currency={BANK_CURRENCY}
-                payeeName={plan.recipient ? `${plan.recipient.display_name} (${plan.recipient.alias})` : plan.recipientName}
-                onApprove={player.approve}
-                onReject={player.reject}
-              />
-            ) : null}
 
             {player.blocked && !player.ekycFailed ? (
               <GuardrailBlockBanner step={c} guardrailPolicy={governance?.guardrail_policy} />
