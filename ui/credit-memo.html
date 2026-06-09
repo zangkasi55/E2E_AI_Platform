@@ -89,6 +89,29 @@
   .node.hitl.working .nlabel{color:var(--obs)}
   @keyframes pulseO{0%{box-shadow:0 0 0 0 rgba(194,94,0,.5)}70%{box-shadow:0 0 0 14px rgba(194,94,0,0)}100%{box-shadow:0 0 0 0 rgba(194,94,0,0)}}
   .node.final.done .ncircle{background:#E7F4EA}
+  .node.decline.done .ncircle{background:#FBEAEA;border-color:var(--blocked);color:var(--blocked)}
+  .node.decline.done .nstate{color:#fff;background:var(--blocked);border-color:var(--blocked)}
+
+  /* ---- Workflow graph (Foundry declarative CSDL topology) ---- */
+  .wf{display:flex;flex-direction:column;align-items:center;gap:0;padding:8px 2px 6px}
+  .wf .node{flex:0 0 150px;min-width:150px}
+  .wf .node .conn{display:none}
+  .wfrow{display:flex;justify-content:center;align-items:flex-start;gap:34px}
+  .wfconn{width:3px;height:22px;background:var(--line);position:relative}
+  .wfconn.done{background:var(--ok)}
+  .wfgroup{border:1.5px dashed #C9D6EC;border-radius:14px;padding:10px 16px 12px;position:relative;
+    background:linear-gradient(180deg,#FAFCFF,#fff)}
+  .wfgroup .wftag{position:absolute;top:-10px;left:14px;background:#fff;border:1px solid #C9D6EC;
+    border-radius:999px;padding:2px 10px;font-size:10.5px;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--agent)}
+  .wfgroup.branch{border-color:#E6C28F;background:linear-gradient(180deg,#FFFBF4,#fff)}
+  .wfgroup.branch .wftag{border-color:#E6C28F;color:#8A4400}
+  .wflanes{display:flex;gap:30px;align-items:flex-start}
+  .wfedge{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;margin-bottom:4px}
+  .wfedge.approve{color:var(--ok)}
+  .wfedge.reject{color:var(--blocked)}
+  .wftrigger{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+    background:#EEF2F8;border:1px solid var(--line);border-radius:999px;padding:5px 14px}
 
   /* ---- Step detail card ---- */
   .stepcard{border:1px solid var(--line);border-radius:12px;padding:0;overflow:hidden;margin-top:6px}
@@ -164,7 +187,7 @@
 
 <!--[if gte mso 9]><xml>
 <mso:CustomDocumentProperties>
-<mso:Product_x0020_category msdt:dt="string">Not found</mso:Product_x0020_category>
+<mso:Product_x0020_category msdt:dt="string">Credit Memo</mso:Product_x0020_category>
 </mso:CustomDocumentProperties>
 </xml><![endif]-->
 </head>
@@ -173,21 +196,24 @@
   <span class="crumb"><a href="index.html" style="color:#BFD3EC">Demo Hub</a> / <b>UC1 · Credit Memo Drafting Agent</b></span>
   <span class="spacer"></span>
   <span class="tag">read-only · HITL</span>
+  <span class="tag">workflow <code>credit-memo-workflow</code></span>
   <span class="tag">run <span id="runId">—</span></span>
   <span class="tag">APP-1001 · Siam Lotus Foods</span>
 </div>
 
 <div class="hero">
-  <h1>Multi-agent credit memo — live agent flow</h1>
-  <p><code>memo_orchestrator</code> plans the work and delegates to four sub-agents. The highlighted node is the
-    agent working right now. Workflow pauses for a human reviewer before any memo is final.</p>
+  <h1>Credit memo — Foundry declarative workflow</h1>
+  <p>This runs as a <b>Microsoft Agent Framework workflow</b> (<code>credit-memo-workflow</code>): the
+    <code>memo-orchestrator</code> plans, sub-agents execute, and two analysts run <b>in parallel</b> before the
+    memo is assembled. The workflow pauses at a <b>Question</b> node for a human reviewer, then a
+    <b>condition branch</b> finalizes or declines. The highlighted node is the step running right now.</p>
 </div>
 
 <div class="layout">
   <!-- LEFT: flow + step detail + HITL -->
   <section class="panel">
     <div class="ph">
-      <h2>Agent flow</h2>
+      <h2>Workflow graph</h2>
       <span class="sub" id="phaseLabel">idle</span>
     </div>
     <div class="pad">
@@ -208,14 +234,15 @@
         <div class="working" id="parentWorking"></div>
       </div>
 
-      <!-- Sub-agent pipeline -->
-      <div class="pipe" id="pipe"></div>
+      <!-- Declarative workflow graph (parallel fan-out + Question + condition branch) -->
+      <div class="wf" id="wfGraph"></div>
 
       <div class="legend-mini">
         <span><i class="lg" style="background:var(--agent2)"></i>working</span>
         <span><i class="lg" style="background:var(--ok)"></i>done</span>
         <span><i class="lg" style="background:#EEF2F8;border:1px solid var(--line)"></i>pending</span>
-        <span><i class="lg" style="background:var(--obs)"></i>HITL pause</span>
+        <span><i class="lg" style="background:var(--obs)"></i>HITL Question</span>
+        <span><i class="lg" style="background:var(--blocked)"></i>declined branch</span>
       </div>
 
       <!-- Current step detail -->
@@ -277,16 +304,20 @@
   document.getElementById("runId").textContent = run.run_id;
   document.getElementById("stepTotal").textContent = run.steps.length;
 
-  // Pipeline nodes (sub-agents + HITL + Final). Parent shown separately above.
+  // Workflow nodes (mirror the credit-memo-workflow CSDL executors).
+  // Parent orchestrator (plan) shown in the banner above as the workflow start.
   var NODES = [
-    { id:"doc_retrieval",   label:"doc_retrieval",   role:"retrieval",  glyph:"DR" },
-    { id:"financial_ratio", label:"financial_ratio", role:"ratios",     glyph:"FR" },
-    { id:"bureau_summary",  label:"bureau_summary",  role:"bureau",     glyph:"BS" },
-    { id:"memo_assembler",  label:"memo_assembler",  role:"assembly",   glyph:"MA" },
-    { id:"hitl",            label:"Human review",    role:"HITL gate",  glyph:"⛛", cls:"hitl special" },
-    { id:"final",           label:"Final memo",      role:"audited",    glyph:"✓", cls:"final special" }
+    { id:"doc_retrieval",   label:"retrieve_docs",    role:"doc-retrieval",     glyph:"DR" },
+    { id:"financial_ratio", label:"analyze_ratios",   role:"financial-ratio",   glyph:"FR" },
+    { id:"bureau_summary",  label:"summarize_bureau", role:"bureau-summary",    glyph:"BS" },
+    { id:"memo_assembler",  label:"assemble_memo",    role:"memo-assembler",    glyph:"MA" },
+    { id:"hitl",            label:"human_approval",   role:"Question · HITL",   glyph:"⛛", cls:"hitl special" },
+    { id:"final",           label:"finalize_memo",    role:"approve branch",    glyph:"✓", cls:"final special" },
+    { id:"decline",         label:"decline_memo",     role:"reject branch",     glyph:"✕", cls:"final special decline" }
   ];
-  // Map each step to a pipeline node id (or "parent")
+  var NODE_BY = {}; NODES.forEach(function(n){ NODE_BY[n.id]=n; });
+
+  // Map each step to a workflow node id (or "parent" for the orchestrator/plan step)
   function nodeForStep(s){
     if(s.phase==="plan") return "parent";
     if(s.phase==="hitl") return "hitl";
@@ -294,19 +325,53 @@
     return s.agent; // sub-agent steps
   }
 
-  var pipe = document.getElementById("pipe");
-  NODES.forEach(function(n){
+  // ---- build the workflow graph (parallel fan-out + Question + condition branch) ----
+  var wf = document.getElementById("wfGraph");
+  function makeNode(id){
+    var n = NODE_BY[id];
     var el = document.createElement("div");
     el.className = "node pending " + (n.cls||"");
     el.id = "node-"+n.id;
     el.innerHTML =
-      '<div class="conn"></div>'+
       '<div class="ncircle">'+n.glyph+'</div>'+
       '<div class="nlabel">'+n.label+'</div>'+
       '<div class="nrole">'+n.role+'</div>'+
       '<div class="nstate">pending</div>';
-    pipe.appendChild(el);
-  });
+    return el;
+  }
+  function conn(){ var c=document.createElement("div"); c.className="wfconn"; return c; }
+  function lane(edgeHtml, edgeCls, nodeId){
+    var l=document.createElement("div");
+    if(edgeHtml) l.innerHTML='<div class="wfedge '+(edgeCls||"")+'">'+edgeHtml+'</div>';
+    l.appendChild(makeNode(nodeId));
+    return l;
+  }
+  (function buildGraph(){
+    var trig=document.createElement("div"); trig.className="wftrigger";
+    trig.textContent="▶ OnConversationStart"; wf.appendChild(trig);
+    wf.appendChild(conn());
+    wf.appendChild(makeNode("doc_retrieval"));
+    wf.appendChild(conn());
+    // parallel concurrent block
+    var pg=document.createElement("div"); pg.className="wfgroup";
+    pg.innerHTML='<span class="wftag">Parallel · concurrent</span>';
+    var plan=document.createElement("div"); plan.className="wflanes";
+    plan.appendChild(makeNode("financial_ratio"));
+    plan.appendChild(makeNode("bureau_summary"));
+    pg.appendChild(plan); wf.appendChild(pg);
+    wf.appendChild(conn());
+    wf.appendChild(makeNode("memo_assembler"));
+    wf.appendChild(conn());
+    wf.appendChild(makeNode("hitl"));
+    wf.appendChild(conn());
+    // condition branch block
+    var bg=document.createElement("div"); bg.className="wfgroup branch";
+    bg.innerHTML='<span class="wftag">Condition · reviewer_approved</span>';
+    var blanes=document.createElement("div"); blanes.className="wflanes";
+    blanes.appendChild(lane("approve →","approve","final"));
+    blanes.appendChild(lane("reject →","reject","decline"));
+    bg.appendChild(blanes); wf.appendChild(bg);
+  })();
 
   var parentBanner = document.getElementById("parentBanner");
   var parentWorking = document.getElementById("parentWorking");
@@ -484,7 +549,9 @@
     var note = reviewerNote.value.trim();
     if(!note){ reviewerErr.classList.add("show"); return; }
     reviewerErr.classList.remove("show");
+    hitlBar.classList.remove("show");
     setNodeState("hitl","done");
+    setNodeState("decline","done");
     decisionNote.innerHTML = 'Rejected by reviewer. Reason: <b>'+note.replace(/</g,"&lt;")+'</b>';
     decisionNote.classList.add("show");
     pushAudit('HITL decision=REJECT · reviewer_reason=' + note);

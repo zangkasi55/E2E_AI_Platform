@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     # Registered workflow-agent names (see provision_foundry_agents.WORKFLOWS).
     foundry_credit_memo_workflow: str = "credit-memo-workflow"
     foundry_banking_workflow: str = "banking-control-workflow"
+    # When true, the UC2 banking reasoning runs server-side in the
+    # banking-control **hosted** agent (backend/hosted_agents/banking-control,
+    # ``kind = hosted``). Unlike workflow-kind agents, hosted agents ARE
+    # invocable via the per-agent responses route, so this path actually
+    # executes the banking reasoning graph inside Foundry. The deterministic
+    # banking steps (guardrails, EKYC, policy gate, handoff) always stay in
+    # Python — the "no money moves" guarantee is never delegated to the agent.
+    use_banking_hosted_agent: bool = False
+    foundry_banking_hosted_agent: str = "banking-control-hosted"
     environment: str = "dev"
     log_level: str = "INFO"
 

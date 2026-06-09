@@ -33,7 +33,7 @@ from typing import Any, Optional
 
 from ..config import settings
 from ..agents.base import Agent
-from ..agents.foundry_workflow_client import invoke_workflow
+from ..agents.foundry_workflow_client import invoke_hosted_agent, invoke_workflow
 from ..models import (
     BankingMessage,
     BankingResponse,
@@ -266,7 +266,58 @@ class BankingController:
         # === Probabilistic zone: intent decomposition + slot filling =======
         decomposition = self.decompose_intent(msg.message)
         wf_traced = False
-        if settings.use_foundry_workflows:
+        if settings.use_banking_hosted_agent:
+            # Run the reasoning server-side in the banking-control HOSTED agent
+            # (``kind = hosted`` — invocable via the per-agent responses route,
+            # unlike the workflow-kind agent). The deterministic decomposition
+            # above remains authoritative and every banking step below stays in
+            # Python, so the "no money moves" guarantee is never delegated to
+            # the agent. The hosted call is non-critical: any preview / transport
+            # error must never fail the run — fall back to the in-process agents.
+            hosted_prompt = (
+                "Decompose this banking request into intent + slots only. "
+                "Never move money; the host application performs all account "
+                f"actions deterministically.\n\nRequest: {msg.message}"
+            )
+            try:
+                hosted = invoke_hosted_agent(
+                    settings.foundry_banking_hosted_agent, hosted_prompt
+                )
+                self._trace(
+                    run,
+                    step,
+                    "invoke_hosted_agent",
+                    inp={"agent": hosted.workflow_name, "message": msg.message},
+                    out={
+                        "engine": "foundry_hosted_agent",
+                        "status": hosted.status,
+                        "mocked": hosted.mocked,
+                        "response_id": hosted.response_id,
+                        "decomposition": decomposition,
+                    },
+                    note=(
+                        "Banking reasoning executed server-side by hosted agent "
+                        f"'{hosted.workflow_name}'."
+                    ),
+                )
+                wf_traced = True
+            except Exception as exc:  # noqa: BLE001 - hosted agent is non-critical
+                self._trace(
+                    run,
+                    step,
+                    "invoke_hosted_agent",
+                    inp={
+                        "agent": settings.foundry_banking_hosted_agent,
+                        "message": msg.message,
+                    },
+                    out={
+                        "engine": "foundry_hosted_agent",
+                        "error": str(exc)[:300],
+                        "fallback": "in_process_agents",
+                    },
+                    note="Hosted-agent invocation failed; fell back to in-process agent orchestration.",
+                )
+        elif settings.use_foundry_workflows:
             # The banking control workflow agent orchestrates intent
             # decomposition server-side. Guardrails (above) and every
             # deterministic banking step (below) stay in Python so the

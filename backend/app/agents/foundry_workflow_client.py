@@ -200,3 +200,39 @@ def resume_workflow(
         awaiting_input=_awaiting_input(payload),
         status=payload.get("status"),
     )
+
+
+def invoke_hosted_agent(agent_name: str, input_text: str) -> WorkflowRunResult:
+    """Run a Foundry **hosted** agent (``kind = hosted``) server-side.
+
+    Hosted agents — unlike workflow-kind agents — accept the endpoint-scoped
+    responses call, so this actually executes the agent's reasoning graph inside
+    Foundry (the banking-control hosted agent runs intake → ekyc → bank-query →
+    controller → judgement → policy gate → handoff). It reuses the per-agent
+    responses route (no ``WorkflowAgents`` preview header) via
+    :func:`foundry_client.invoke_prompt_agent`.
+
+    Mock-safe: in ``MOCK_MODE`` (and no ``LIVE_LLM`` / Foundry flags) no network
+    call is made — a deterministic synthetic result is returned so the demo and
+    tests run offline.
+    """
+    if not _live():
+        return WorkflowRunResult(
+            text=f"[hosted-mock:{agent_name}] ran the banking reasoning graph "
+            f"server-side for input ({len(input_text)} chars).",
+            workflow_name=agent_name,
+            response_id=f"mock-resp-{abs(hash(input_text)) % 10_000_000}",
+            status="mock",
+            mocked=True,
+        )
+    # Lazy import to keep this module import-safe without the prompt-agent path.
+    from .foundry_client import invoke_prompt_agent
+
+    res = invoke_prompt_agent(agent_name, input_text)
+    return WorkflowRunResult(
+        text=res.text,
+        usage=res.usage,
+        workflow_name=agent_name,
+        response_id=res.response_id,
+        status="completed",
+    )
