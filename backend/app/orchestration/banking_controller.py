@@ -191,6 +191,11 @@ class BankingController:
         run = RunState(use_case=UseCase.BANKING, status=RunStatus.RUNNING)
         run.run_id = run.id
         audit_store.save_run(run)
+        # Standalone workflow-level span (its own trace). It MUST NOT wrap the
+        # child agent calls: Foundry's per-agent Traces tabs attribute every
+        # child span to the root "main agent", so wrapping the run emptied each
+        # banking agent's own Traces tab. Keep it standalone so every banking
+        # sub-agent (ekyc/bank-query/judgement) keeps its own trace.
         with start_foundry_agent_span(
             agent=settings.foundry_banking_workflow,
             run_id=run.run_id,
@@ -198,7 +203,8 @@ class BankingController:
             use_case=USE_CASE,
             model="workflow-orchestrator",
         ):
-            return self._handle(msg, run)
+            pass
+        return self._handle(msg, run)
 
     def _handle(self, msg: BankingMessage, run: RunState) -> BankingResponse:
         """Execute the banking workflow after the outer telemetry span starts."""

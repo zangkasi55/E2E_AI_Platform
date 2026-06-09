@@ -363,6 +363,12 @@ class MemoOrchestrator:
         run = RunState(use_case=UseCase.CREDIT_MEMO, request=request, status=RunStatus.RUNNING)
         run.run_id = run.id  # keep run_id == id for Cosmos partitioning
         audit_store.save_run(run)
+        # Emit a standalone workflow-level span (its own trace). It MUST NOT
+        # wrap the child agent calls: Foundry's per-agent Traces tabs attribute
+        # every child span to the root "main agent", so wrapping the run made
+        # all sub-agent spans children of the workflow trace and emptied each
+        # agent's own Traces tab. Keeping it standalone preserves one trace per
+        # agent while still surfacing a workflow-named span.
         with start_foundry_agent_span(
             agent=settings.foundry_credit_memo_workflow,
             run_id=run.run_id,
@@ -370,7 +376,8 @@ class MemoOrchestrator:
             use_case=USE_CASE,
             model="workflow-orchestrator",
         ):
-            return self._start(request, run)
+            pass
+        return self._start(request, run)
 
     def _start(self, request: RunRequest, run: RunState) -> RunState:
         """Execute the credit-memo workflow after the outer telemetry span starts."""
