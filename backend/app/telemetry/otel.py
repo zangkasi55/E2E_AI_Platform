@@ -63,6 +63,11 @@ def configure_telemetry() -> None:
 
         configure_azure_monitor(
             connection_string=settings.applicationinsights_connection_string,
+            # The distro defaults to rate-limited sampling when no sampler is
+            # supplied. Banking emits several deterministic agent spans in a
+            # tight burst, and the default sampler can drop later steps before
+            # they reach Foundry Traces. This PoC needs full trace fidelity.
+            sampling_ratio=1.0,
         )
         _tracer = trace.get_tracer("agpoc.orchestrator")
         _meter = metrics.get_meter("agpoc.orchestrator")
@@ -168,6 +173,7 @@ def start_gen_ai_span(
     agent_id: Optional[str] = None,
     identity_client_id: Optional[str] = None,
     identity_role: Optional[str] = None,
+    extra_attributes: Optional[dict] = None,
 ):
     """Start a GenAI-convention span (``<operation> <target>``) for one call.
 
@@ -198,24 +204,59 @@ def start_gen_ai_span(
         server_address = urlparse(raw_endpoint).netloc if raw_endpoint else ""
     except Exception:  # pragma: no cover - never break telemetry on parse
         server_address = ""
+    attrs = {
+        "gen_ai.system": _gen_ai_system_for(operation),
+        "gen_ai.operation.name": operation,
+        "gen_ai.request.model": model,
+        "gen_ai.agent.id": resolved_agent_id,
+        "gen_ai.agent.name": agent,
+        "gen_ai.thread.id": run_id,
+        "server.address": server_address,
+        # Custom dimensions retained for the token-monitor / audit views.
+        "agent.id": resolved_agent_id,
+        "agent.identity.client_id": identity_client_id or "",
+        "agent.identity.role": identity_role or "",
+        "use_case": use_case,
+        "run_id": run_id,
+    }
+    if extra_attributes:
+        attrs.update(extra_attributes)
     return _tracer.start_as_current_span(
         f"{operation} {target}",
         kind=SpanKind.CLIENT,
-        attributes={
-            "gen_ai.system": _gen_ai_system_for(operation),
-            "gen_ai.operation.name": operation,
-            "gen_ai.request.model": model,
-            "gen_ai.agent.id": resolved_agent_id,
-            "gen_ai.agent.name": agent,
-            "gen_ai.thread.id": run_id,
-            "server.address": server_address,
-            # Custom dimensions retained for the token-monitor / audit views.
-            "agent.id": resolved_agent_id,
-            "agent.identity.client_id": identity_client_id or "",
-            "agent.identity.role": identity_role or "",
-            "use_case": use_case,
-            "run_id": run_id,
-        },
+        attributes=attrs,
+    )
+
+
+def start_foundry_agent_span(
+    *,
+    agent: str,
+    run_id: str,
+    action: str,
+    use_case: str,
+    step: Optional[int] = None,
+    model: str = "deterministic-orchestrator",
+    agent_id: Optional[str] = None,
+):
+    """Start a Foundry-correlatable agent span for deterministic/orchestration work."""
+    resolved_agent_id = agent_id or settings.foundry_agent_ids.get(agent) or agent
+    from ..identity import identity_for
+
+    identity = identity_for(agent)
+    extra = {"action": action}
+    if step is not None:
+        extra["step"] = step
+    return start_gen_ai_span(
+        operation="invoke_agent",
+        target=resolved_agent_id,
+        agent=agent,
+        model=model,
+        use_case=use_case,
+        run_id=run_id,
+        agent_id=resolved_agent_id,
+        identity_client_id=identity.client_id,
+        identity_role=identity.app_role,
+        extra_attributes=extra,
     )
 
 

@@ -30,6 +30,7 @@ from ..models import (
     UseCase,
 )
 from ..telemetry.audit import audit_store
+from ..telemetry.otel import start_foundry_agent_span
 from ..tools import registry
 
 USE_CASE = UseCase.CREDIT_MEMO.value
@@ -362,7 +363,17 @@ class MemoOrchestrator:
         run = RunState(use_case=UseCase.CREDIT_MEMO, request=request, status=RunStatus.RUNNING)
         run.run_id = run.id  # keep run_id == id for Cosmos partitioning
         audit_store.save_run(run)
+        with start_foundry_agent_span(
+            agent=settings.foundry_credit_memo_workflow,
+            run_id=run.run_id,
+            action="credit_memo_workflow",
+            use_case=USE_CASE,
+            model="workflow-orchestrator",
+        ):
+            return self._start(request, run)
 
+    def _start(self, request: RunRequest, run: RunState) -> RunState:
+        """Execute the credit-memo workflow after the outer telemetry span starts."""
         applicant_id = request.applicant_id
         dr_document = request.dr_document.model_dump() if request.dr_document else None
         # Excerpt of the attached credit file the analysis agents read so the

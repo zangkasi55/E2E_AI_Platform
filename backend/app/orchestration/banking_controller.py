@@ -47,6 +47,7 @@ from ..models import (
     UseCase,
 )
 from ..telemetry.audit import audit_store
+from ..telemetry.otel import start_foundry_agent_span
 from ..telemetry.purview_audit import emit_prompt_risk_event
 from ..tools import registry
 
@@ -190,6 +191,17 @@ class BankingController:
         run = RunState(use_case=UseCase.BANKING, status=RunStatus.RUNNING)
         run.run_id = run.id
         audit_store.save_run(run)
+        with start_foundry_agent_span(
+            agent=settings.foundry_banking_workflow,
+            run_id=run.run_id,
+            action="banking_control_workflow",
+            use_case=USE_CASE,
+            model="workflow-orchestrator",
+        ):
+            return self._handle(msg, run)
+
+    def _handle(self, msg: BankingMessage, run: RunState) -> BankingResponse:
+        """Execute the banking workflow after the outer telemetry span starts."""
         step = 0
 
         # === Deterministic guardrail gate (BEFORE any tool call) ===========
@@ -314,11 +326,19 @@ class BankingController:
         # is kept for backward compatibility (== ekyc_decision == "confirm").
         step += 1
         confirmed = bool(msg.identity_confirmed) or msg.ekyc_decision == "confirm"
-        ekyc = registry.confirm_identity(
-            msg.user_id,
-            confirmed,
-            caller_agent="ekyc_agent",
-        )
+        with start_foundry_agent_span(
+            agent="ekyc_agent",
+            run_id=run.run_id,
+            step=step,
+            action="confirm_identity",
+            use_case=USE_CASE,
+            model="deterministic-tool",
+        ):
+            ekyc = registry.confirm_identity(
+                msg.user_id,
+                confirmed,
+                caller_agent="ekyc_agent",
+            )
         self._trace(
             run, step, "confirm_identity",
             inp={
@@ -386,11 +406,19 @@ class BankingController:
             # default to the user's first account in synthetic data
             src_account = self._default_account(msg.user_id)
             slots.src_account = src_account
-        balance_res = registry.query_bank_account(
-            msg.user_id,
-            src_account,
-            caller_agent="bank_query",
-        )
+        with start_foundry_agent_span(
+            agent="bank_query",
+            run_id=run.run_id,
+            step=step,
+            action="query_bank_account",
+            use_case=USE_CASE,
+            model="deterministic-tool",
+        ):
+            balance_res = registry.query_bank_account(
+                msg.user_id,
+                src_account,
+                caller_agent="bank_query",
+            )
         self._trace(run, step, "query_bank_account", inp={"user_id": msg.user_id, "account_id": src_account}, out=balance_res)
         if "error" in balance_res:
             run.status = RunStatus.FAILED
@@ -450,14 +478,22 @@ class BankingController:
 
         # === Judgement: EKYC + funds + transfer-limit policy (no money moves) ===
         step += 1
-        judgement = registry.evaluate_transfer_judgement(
-            msg.user_id,
-            src_account,
-            slots.payee_id,
-            float(slots.amount_thb),
-            ekyc_passed=bool(ekyc.get("ekyc_passed")),
-            caller_agent="judgement_agent",
-        )
+        with start_foundry_agent_span(
+            agent="judgement_agent",
+            run_id=run.run_id,
+            step=step,
+            action="evaluate_transfer_judgement",
+            use_case=USE_CASE,
+            model="deterministic-tool",
+        ):
+            judgement = registry.evaluate_transfer_judgement(
+                msg.user_id,
+                src_account,
+                slots.payee_id,
+                float(slots.amount_thb),
+                ekyc_passed=bool(ekyc.get("ekyc_passed")),
+                caller_agent="judgement_agent",
+            )
         self._trace(
             run, step, "evaluate_transfer_judgement",
             inp={"amount": slots.amount_thb, "transfer_limit_thb": judgement.get("transfer_limit_thb")},
