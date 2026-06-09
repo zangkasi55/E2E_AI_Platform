@@ -247,33 +247,52 @@ class BankingController:
 
         # === Probabilistic zone: intent decomposition + slot filling =======
         decomposition = self.decompose_intent(msg.message)
+        wf_traced = False
         if settings.use_foundry_workflows:
             # The banking control workflow agent orchestrates intent
             # decomposition server-side. Guardrails (above) and every
             # deterministic banking step (below) stay in Python so the
             # "no money moves" guarantee is never delegated to the LLM graph.
-            wf_result = invoke_workflow(
-                settings.foundry_banking_workflow,
-                (
-                    "Decompose this banking request into intent + slots only. "
-                    "Never move money; the host application performs all account "
-                    f"actions deterministically.\n\nRequest: {msg.message}"
-                ),
-            )
-            self._trace(
-                run,
-                step,
-                "invoke_workflow",
-                inp={"workflow": wf_result.workflow_name, "message": msg.message},
-                out={
-                    "engine": "foundry_workflow",
-                    "status": wf_result.status,
-                    "mocked": wf_result.mocked,
-                    "decomposition": decomposition,
-                },
-                note=f"Intent decomposition orchestrated by '{wf_result.workflow_name}'.",
-            )
-        else:
+            # The workflow call is non-critical (the deterministic decomposition
+            # above is authoritative), so a workflow/preview error must never
+            # fail the run — fall back to the in-process agent path instead.
+            try:
+                wf_result = invoke_workflow(
+                    settings.foundry_banking_workflow,
+                    (
+                        "Decompose this banking request into intent + slots only. "
+                        "Never move money; the host application performs all account "
+                        f"actions deterministically.\n\nRequest: {msg.message}"
+                    ),
+                )
+                self._trace(
+                    run,
+                    step,
+                    "invoke_workflow",
+                    inp={"workflow": wf_result.workflow_name, "message": msg.message},
+                    out={
+                        "engine": "foundry_workflow",
+                        "status": wf_result.status,
+                        "mocked": wf_result.mocked,
+                        "decomposition": decomposition,
+                    },
+                    note=f"Intent decomposition orchestrated by '{wf_result.workflow_name}'.",
+                )
+                wf_traced = True
+            except Exception as exc:  # noqa: BLE001 - workflow engine is non-critical
+                self._trace(
+                    run,
+                    step,
+                    "invoke_workflow",
+                    inp={"workflow": settings.foundry_banking_workflow, "message": msg.message},
+                    out={
+                        "engine": "foundry_workflow",
+                        "error": str(exc)[:300],
+                        "fallback": "in_process_agents",
+                    },
+                    note="Foundry workflow invocation failed; fell back to in-process agent orchestration.",
+                )
+        if not wf_traced:
             self.agent.run_step(
                 run_id=run.run_id,
                 step=step,

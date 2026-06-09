@@ -387,38 +387,59 @@ class MemoOrchestrator:
             "HITL: pause for human approval",
         ]
         if wf:
-            wf_result = invoke_workflow(
-                settings.foundry_credit_memo_workflow,
-                (
-                    f"Draft an SME credit memo for applicant {applicant_id} using "
-                    f"template {request.template_id}. Use your attached tools to "
-                    f"retrieve documents, financials and bureau data, assemble the "
-                    f"memo, then pause for human approval."
-                    + (f"\n\nAttached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "")
-                ),
-            )
-            wf_handle = {
-                "workflow": wf_result.workflow_name,
-                "response_id": wf_result.response_id,
-                "conversation_id": wf_result.conversation_id,
-            }
-            self._trace(
-                run,
-                step,
-                "memo_orchestrator",
-                "invoke_workflow",
-                inp={"workflow": wf_result.workflow_name, "applicant_id": applicant_id},
-                out={
-                    "engine": "foundry_workflow",
-                    "status": wf_result.status,
-                    "awaiting_input": wf_result.awaiting_input,
+            # The workflow call is non-critical (Python computes the plan and runs
+            # every gate deterministically below), so a workflow/preview error must
+            # never fail the run — fall back to the in-process orchestrator agent.
+            try:
+                wf_result = invoke_workflow(
+                    settings.foundry_credit_memo_workflow,
+                    (
+                        f"Draft an SME credit memo for applicant {applicant_id} using "
+                        f"template {request.template_id}. Use your attached tools to "
+                        f"retrieve documents, financials and bureau data, assemble the "
+                        f"memo, then pause for human approval."
+                        + (f"\n\nAttached credit file (excerpt):\n{doc_excerpt}" if doc_excerpt else "")
+                    ),
+                )
+                wf_handle = {
+                    "workflow": wf_result.workflow_name,
                     "response_id": wf_result.response_id,
-                    "mocked": wf_result.mocked,
-                    "plan": plan,
-                },
-                note=f"Run orchestrated by Foundry workflow agent '{wf_result.workflow_name}'.",
-            )
-        else:
+                    "conversation_id": wf_result.conversation_id,
+                }
+                self._trace(
+                    run,
+                    step,
+                    "memo_orchestrator",
+                    "invoke_workflow",
+                    inp={"workflow": wf_result.workflow_name, "applicant_id": applicant_id},
+                    out={
+                        "engine": "foundry_workflow",
+                        "status": wf_result.status,
+                        "awaiting_input": wf_result.awaiting_input,
+                        "response_id": wf_result.response_id,
+                        "mocked": wf_result.mocked,
+                        "plan": plan,
+                    },
+                    note=f"Run orchestrated by Foundry workflow agent '{wf_result.workflow_name}'.",
+                )
+            except Exception as exc:  # noqa: BLE001 - workflow engine is non-critical
+                wf = False
+                wf_handle = None
+                self._trace(
+                    run,
+                    step,
+                    "memo_orchestrator",
+                    "invoke_workflow",
+                    inp={"workflow": settings.foundry_credit_memo_workflow, "applicant_id": applicant_id},
+                    out={
+                        "engine": "foundry_workflow",
+                        "error": str(exc)[:300],
+                        "fallback": "in_process_agents",
+                        "plan": plan,
+                    },
+                    note="Foundry workflow invocation failed; fell back to in-process agent orchestration.",
+                )
+        if not wf:
             self.agents["memo_orchestrator"].run_step(
                 run_id=run.run_id,
                 step=step,
@@ -721,30 +742,45 @@ class MemoOrchestrator:
         # it prevents a human from force-approving a hard-reject case.
         if wf_handle:
             answer = "approve" if decision.approved else "reject"
-            wf_res = resume_workflow(
-                wf_handle.get("workflow") or settings.foundry_credit_memo_workflow,
-                wf_handle.get("response_id"),
-                answer,
-                conversation_id=wf_handle.get("conversation_id"),
-            )
-            self._trace(
-                run,
-                step,
-                "memo_orchestrator",
-                "resume_workflow",
-                out={
-                    "engine": "foundry_workflow",
-                    "hitl_owner": "agent_workflow_question_node",
-                    "hitl_node": "human_approval",
-                    "decision": answer,
-                    "status": wf_res.status,
-                    "mocked": wf_res.mocked,
-                },
-                note=(
-                    "Reviewer decision delivered to the agent workflow HITL Question "
-                    "node 'human_approval'; the workflow drives finalization server-side."
-                ),
-            )
+            try:
+                wf_res = resume_workflow(
+                    wf_handle.get("workflow") or settings.foundry_credit_memo_workflow,
+                    wf_handle.get("response_id"),
+                    answer,
+                    conversation_id=wf_handle.get("conversation_id"),
+                )
+                self._trace(
+                    run,
+                    step,
+                    "memo_orchestrator",
+                    "resume_workflow",
+                    out={
+                        "engine": "foundry_workflow",
+                        "hitl_owner": "agent_workflow_question_node",
+                        "hitl_node": "human_approval",
+                        "decision": answer,
+                        "status": wf_res.status,
+                        "mocked": wf_res.mocked,
+                    },
+                    note=(
+                        "Reviewer decision delivered to the agent workflow HITL Question "
+                        "node 'human_approval'; the workflow drives finalization server-side."
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 - workflow engine is non-critical
+                self._trace(
+                    run,
+                    step,
+                    "memo_orchestrator",
+                    "resume_workflow",
+                    out={
+                        "engine": "foundry_workflow",
+                        "decision": answer,
+                        "error": str(exc)[:300],
+                        "fallback": "in_process_finalization",
+                    },
+                    note="Foundry workflow resume failed; Python finalized the decision deterministically.",
+                )
             step = len(run.steps)
 
         guidance = ((run.draft_memo or {}).get("approval_guidance") or {}) if run.draft_memo else {}

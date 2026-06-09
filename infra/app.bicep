@@ -77,8 +77,8 @@ param liveLlm bool = true
 @description('Bind in-code agents to the live Foundry agents/workflows.')
 param useFoundryAgents bool = true
 
-@description('Drive UC1/UC2 orchestration with the provisioned Foundry workflow agents (server-side agent workflow incl. the HITL Question node). The Python orchestrator still owns the deterministic policy gates + AWAITING_APPROVAL state machine.')
-param useFoundryWorkflows bool = true
+@description('Drive UC1/UC2 orchestration with the provisioned Foundry workflow agents (server-side agent workflow incl. the HITL Question node). The Python orchestrator still owns the deterministic policy gates + AWAITING_APPROVAL state machine. NOTE: kept false by default — declarative kind:workflow agents are NOT invocable via the endpoint-scoped Responses route ("Agent kind workflow is not supported"); deploy the hosted-agent variant (backend/hosted_agents/) before enabling. Calls are fail-safe regardless.')
+param useFoundryWorkflows bool = false
 
 @description('Registered credit-memo workflow agent name (provision_foundry_agents.WORKFLOWS).')
 param creditMemoWorkflow string = 'credit-memo-workflow'

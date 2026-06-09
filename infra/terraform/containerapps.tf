@@ -98,6 +98,12 @@ resource "azurerm_container_app" "orchestrator" {
         name  = "USE_FOUNDRY_AGENTS"
         value = "true"
       }
+      # Declarative kind:workflow agents are not invocable via the endpoint-scoped
+      # Responses route; keep off until the hosted-agent variant is published.
+      env {
+        name  = "USE_FOUNDRY_WORKFLOWS"
+        value = "false"
+      }
       env {
         name  = "FOUNDRY_PROJECT_ENDPOINT"
         value = "https://${azurerm_cognitive_account.foundry.name}.services.ai.azure.com/api/projects/${var.foundry_project_name}"
