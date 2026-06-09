@@ -36,7 +36,14 @@ def configure_telemetry() -> None:
     if _configured:
         return
     if not settings.applicationinsights_connection_string:
-        # Nothing to export to; stay silent rather than crash the PoC.
+        # Nothing to export to; stay silent rather than crash the PoC, but make
+        # the reason visible in container logs (stdout) so an empty Foundry
+        # Traces view can be diagnosed without guesswork.
+        print(
+            "[agpoc.telemetry] NOT configured: "
+            "APPLICATIONINSIGHTS_CONNECTION_STRING is empty",
+            flush=True,
+        )
         _configured = True
         return
 
@@ -65,7 +72,21 @@ def configure_telemetry() -> None:
             unit="token",
             description="Generative-AI token usage per model call",
         )
+        print(
+            "[agpoc.telemetry] configured: Azure Monitor exporter active "
+            f"(service={os.environ.get('OTEL_SERVICE_NAME')}, "
+            f"conn_str_len={len(settings.applicationinsights_connection_string)})",
+            flush=True,
+        )
     except Exception:  # pragma: no cover - telemetry must never break the app
+        # Never crash the app on telemetry-setup failure, but DO surface the
+        # error to container logs — a silent swallow here previously hid an
+        # OpenTelemetry version conflict that left Foundry Traces/Monitor empty.
+        import logging
+
+        logging.getLogger("agpoc.telemetry").exception(
+            "configure_azure_monitor failed; telemetry export disabled"
+        )
         _tracer = None
         _meter = None
         _token_usage_counter = None
