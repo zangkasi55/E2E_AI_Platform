@@ -5,6 +5,7 @@
 // below. Terminal action is an auditable HandoffObject — the agent moves NO
 // money. POC_SPEC §UC2 hard rule.
 // =============================================================================
+import { useState } from "react";
 import type { AgentStatus, HandoffObject, Step } from "../types";
 import { TOOLS } from "../data/mockData";
 import { JsonBlock, StatusChip } from "./primitives";
@@ -35,6 +36,7 @@ const DET_STAGES: StageDef[] = [
   { id: "balance_lookup", label: "get_balance", role: TOOLS.get_balance.sig, zone: "det" },
   { id: "payee_resolution", label: "resolve_payee", role: TOOLS.resolve_payee.sig, zone: "det" },
   { id: "eligibility_check", label: "check_transfer_eligibility + PDP", role: "Policy Decision Point", zone: "det", gov: true },
+  { id: "human_approval", label: "human_approval_gate", role: "HITL · over-limit approval", zone: "det", gov: true },
   { id: "handoff", label: "request_transaction_handoff", role: "Terminal · auditable handoff", zone: "det" },
 ];
 
@@ -45,6 +47,7 @@ const SG: Record<string, string> = {
   balance_lookup: "B",
   payee_resolution: "P",
   eligibility_check: "E",
+  human_approval: "HA",
   handoff: "H",
 };
 
@@ -138,6 +141,89 @@ export function HandoffObjectCard({ handoff }: { handoff?: HandoffObject }) {
   );
 }
 
+// Identity-confirmation (EKYC) gate. Before any account tool runs, the customer
+// must Confirm or Cancel. Cancelling is a bounded retry loop: after maxCancels
+// cancels, the next cancel aborts the process (EKYC_FAILED). The agent never
+// proceeds to account access without an explicit customer confirmation.
+export function EkycGate({
+  active,
+  confirmed,
+  failed,
+  cancelCount,
+  maxCancels,
+  userId,
+  onConfirm,
+  onCancel,
+}: {
+  active: boolean;
+  confirmed: boolean;
+  failed: boolean;
+  cancelCount: number;
+  maxCancels: number;
+  userId?: string;
+  onConfirm(): void;
+  onCancel(): void;
+}) {
+  if (!active && !failed && !confirmed) return null;
+
+  if (failed) {
+    return (
+      <div className="hitlbar resolved rejected">
+        <h3>
+          <span aria-hidden>✕</span> EKYC failed · process cancelled
+        </h3>
+        <p>
+          Identity confirmation was cancelled {cancelCount} times (more than the {maxCancels} allowed). The process has
+          been cancelled — no account was accessed and no money was moved.
+        </p>
+      </div>
+    );
+  }
+
+  if (confirmed && !active) {
+    return (
+      <div className="hitlbar resolved approved">
+        <h3>
+          <span aria-hidden>✓</span> Identity confirmed · EKYC passed
+        </h3>
+        <p>The customer confirmed their identity. The run resumes through the deterministic control flow.</p>
+      </div>
+    );
+  }
+
+  const attempt = cancelCount + 1;
+  const totalAttempts = maxCancels + 1;
+  const cancelsLeft = Math.max(0, maxCancels - cancelCount);
+  return (
+    <div className="hitlbar">
+      <h3>
+        <span aria-hidden>🪪</span> EKYC · customer identity confirmation required
+      </h3>
+      <p>
+        Before any account tool runs, you must confirm your identity. Choose <strong>Confirm</strong> to proceed, or{" "}
+        <strong>Cancel</strong> to abort. Cancelling more than {maxCancels} times cancels the process.
+      </p>
+      <div className="sub hitl-guidance">
+        <div>
+          <strong>Customer:</strong> {userId ?? "—"} · method=customer_confirmation
+        </div>
+        <div>
+          <strong>Attempt:</strong> {attempt} of {totalAttempts}
+          {cancelCount > 0 ? ` · cancelled ${cancelCount} · ${cancelsLeft} cancel(s) left` : ""}
+        </div>
+      </div>
+      <div className="acts">
+        <button className="btn ok" onClick={onConfirm}>
+          ✓ Confirm identity
+        </button>
+        <button className="btn warn" onClick={onCancel}>
+          ✕ Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function GuardrailBlockBanner({
   step,
   guardrailPolicy,
@@ -160,6 +246,114 @@ export function GuardrailBlockBanner({
           {guardrailPolicy.policy_id ? ` (${guardrailPolicy.policy_id})` : ""}.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+// Human-in-the-loop approval gate for over-limit transfers. Mirrors the credit-
+// memo HITL bar but with banking copy. The agent cannot self-approve — an
+// authorized banker must decide before the over-limit transfer can execute.
+export function TransferApprovalGate({
+  active,
+  resolved,
+  decision,
+  reason,
+  amount,
+  limit,
+  currency,
+  payeeName,
+  onApprove,
+  onReject,
+}: {
+  active: boolean;
+  resolved: boolean;
+  decision?: "approved" | "rejected" | null;
+  reason?: string;
+  amount: number;
+  limit: number;
+  currency: string;
+  payeeName?: string;
+  onApprove(reason?: string): void;
+  onReject(reason: string): void;
+}) {
+  const [note, setNote] = useState("");
+  const [rejectError, setRejectError] = useState<string | null>(null);
+
+  if (!active && !resolved && !decision) return null;
+
+  const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  if (resolved || decision) {
+    const approved = decision === "approved";
+    return (
+      <div className={`hitlbar resolved ${approved ? "approved" : "rejected"}`}>
+        <h3>
+          <span aria-hidden>{approved ? "✓" : "✕"}</span> {approved ? "Approved by banker" : "Rejected by banker"}
+        </h3>
+        <p>
+          {approved
+            ? "Banker approved the over-limit transfer. The workflow resumes and the handoff is released for step-up confirmation; the downstream core-banking system executes the transfer."
+            : "Banker declined the over-limit transfer. No money is moved; the audited decline is logged with the reviewer reason."}
+        </p>
+        {reason ? (
+          <p className="hitl-note-summary">
+            <strong>Banker note:</strong> {reason}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="hitlbar">
+      <h3>
+        <span aria-hidden>⛛</span> Human-in-the-loop · over-limit approval required
+      </h3>
+      <p>
+        Azure AI Foundry agent workflow · the transfer exceeds the per-transaction limit, so the run is paused.
+        The agent cannot self-approve — an authorized banker must decide.
+      </p>
+      <div className="sub hitl-guidance">
+        <div>
+          <strong>Amount:</strong> {fmt(amount)} {currency} {payeeName ? `→ ${payeeName}` : ""}
+        </div>
+        <div>
+          <strong>Per-txn limit:</strong> {fmt(limit)} {currency} · over by {fmt(Math.max(0, amount - limit))} {currency}
+        </div>
+      </div>
+      <div className="hitl-note-wrap">
+        <label htmlFor="xfer-banker-note">Banker note (required for reject; optional for approve)</label>
+        <textarea
+          id="xfer-banker-note"
+          className="hitl-note"
+          value={note}
+          onChange={(e) => {
+            setNote(e.target.value);
+            if (rejectError) setRejectError(null);
+          }}
+          rows={3}
+          placeholder="Enter the banker's reason or note..."
+        />
+        {rejectError ? <div className="hitl-note-error">{rejectError}</div> : null}
+      </div>
+      <div className="acts">
+        <button className="btn ok" onClick={() => onApprove(note.trim())}>
+          ✓ Approve transfer
+        </button>
+        <button
+          className="btn warn"
+          onClick={() => {
+            const trimmed = note.trim();
+            if (!trimmed) {
+              setRejectError("Please provide a rejection reason.");
+              return;
+            }
+            onReject(trimmed);
+          }}
+        >
+          ✕ Reject
+        </button>
+      </div>
     </div>
   );
 }

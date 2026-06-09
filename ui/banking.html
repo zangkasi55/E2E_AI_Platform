@@ -189,18 +189,24 @@
       <div class="zone prob">
         <div class="zh">◆ Probabilistic AI zone <span class="ztag">Foundry Agent Service + Azure OpenAI · reasoning</span></div>
         <div class="row">
+          <div class="snode pending" id="s-ekyc">
+            <div class="st"><span class="ind"></span>step 1 · agent</div>
+            <div class="sn">EKYC confirmation</div>
+            <div class="sd">confirm customer is the account holder</div>
+            <span class="badge b-apim">via APIM</span>
+          </div>
           <div class="snode pending" id="s-intent_decomposition">
-            <div class="st"><span class="ind"></span>step 1</div>
+            <div class="st"><span class="ind"></span>step 2</div>
             <div class="sn">Intent decomposition</div>
             <div class="sd">QUERY_BALANCE → TRANSFER_MONEY · SEQUENTIAL_CONDITIONAL</div>
           </div>
           <div class="snode pending" id="s-slot_filling">
-            <div class="st"><span class="ind"></span>step 2</div>
+            <div class="st"><span class="ind"></span>step 3</div>
             <div class="sn">Slot filling</div>
             <div class="sd">amount=2000 · payee=mom · source account</div>
           </div>
           <div class="snode pending" id="s-conditional_eval">
-            <div class="st"><span class="ind"></span>step 4</div>
+            <div class="st"><span class="ind"></span>step 5</div>
             <div class="sn">Conditional logic</div>
             <div class="sd">balance &gt; 5,000 THB ?</div>
           </div>
@@ -215,25 +221,25 @@
         <div class="apimbar">⛬ Azure API Management — tool-scope enforcement · per-call policy decision · audit log</div>
         <div class="row">
           <div class="snode pending" id="s-balance_lookup">
-            <div class="st"><span class="ind"></span>step 3 · tool</div>
-            <div class="sn">get_balance</div>
+            <div class="st"><span class="ind"></span>step 4 · tool</div>
+            <div class="sn">query_bank_account</div>
             <div class="sd">(user_id, account_id)</div>
             <span class="badge b-apim">via APIM</span>
           </div>
           <div class="snode pending" id="s-payee_resolution">
-            <div class="st"><span class="ind"></span>step 5 · tool</div>
+            <div class="st"><span class="ind"></span>step 6 · tool</div>
             <div class="sn">resolve_payee</div>
             <div class="sd">(user_id, payee_alias)</div>
             <span class="badge b-apim">via APIM</span>
           </div>
           <div class="snode pending" id="s-eligibility_check">
-            <div class="st"><span class="ind"></span>step 6 · tool</div>
-            <div class="sn">check_transfer_eligibility</div>
-            <div class="sd">(user, src, payee, amount)</div>
+            <div class="st"><span class="ind"></span>step 7 · agent</div>
+            <div class="sn">evaluate_transfer_judgement</div>
+            <div class="sd">EKYC + balance + transfer limit</div>
             <span class="badge b-apim">via APIM</span>
           </div>
           <div class="snode pending" id="s-handoff">
-            <div class="st"><span class="ind"></span>step 7 · terminal</div>
+            <div class="st"><span class="ind"></span>step 8 · terminal</div>
             <div class="sn">request_transaction_handoff</div>
             <div class="sd">(intent, slots, policy_result)</div>
             <span class="badge b-block">handoff only</span>
@@ -263,6 +269,26 @@
 
   <!-- RIGHT -->
   <aside style="display:flex;flex-direction:column;gap:18px">
+    <section class="panel">
+      <div class="ph"><h2>Bank transfer-limit policy</h2><span class="sub">adjustable</span></div>
+      <div class="pad">
+        <p style="margin:0 0 10px;font-size:12.5px;color:var(--muted)">
+          The judgement agent enforces this per-transaction limit. Sample policy
+          <code>SCBX-RETAIL-XFER-001</code> caps each transfer; EKYC is always required.
+        </p>
+        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+          <label style="flex:1;min-width:130px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">
+            Limit per transaction (THB)
+            <input id="limitInput" type="number" min="1" step="100" value="1500"
+              style="width:100%;margin-top:5px;font:inherit;font-size:15px;font-weight:700;padding:9px 11px;border:1px solid var(--line);border-radius:8px;color:var(--ink)">
+          </label>
+          <button class="btn primary" id="applyLimitBtn">Apply policy</button>
+        </div>
+        <div id="policyState" style="margin-top:10px;font-size:12.5px;color:#234a2c;background:#F2F9F4;border-left:3px solid var(--ok);padding:8px 11px;border-radius:0 8px 8px 0">
+          Active limit: <b>1,500 THB</b> · demo transfer is <b>2,000 THB</b> → currently <b>declined</b> by policy.
+        </div>
+      </div>
+    </section>
     <section class="panel">
       <div class="ph"><h2>Token usage</h2><span class="sub">live · per run</span></div>
       <div class="pad">
@@ -298,8 +324,9 @@
   var sendBtn=document.getElementById("sendBtn"), resetBtn=document.getElementById("resetBtn"),
       unsafe=document.getElementById("unsafeToggle");
 
-  var STAGE_IDS=["intent_decomposition","slot_filling","conditional_eval","balance_lookup",
+  var STAGE_IDS=["ekyc","intent_decomposition","slot_filling","conditional_eval","balance_lookup",
                  "payee_resolution","eligibility_check","handoff"];
+  var DEMO_AMOUNT = 2000;
   function nodeEl(stage){ return document.getElementById("s-"+stage); }
   function setStage(stage,state){
     var el=nodeEl(stage); if(!el) return;
@@ -348,14 +375,16 @@
     var tool="";
     if(s.tool){ tool+='<span class="badge b-tool">'+s.tool+' '+A.TOOLS[s.tool].sig+'</span>'; }
     if(s.apim) tool+='<span class="badge b-apim">via APIM</span>';
-    if(s.stage==="eligibility_check"&&!s.blocked) tool+='<span class="badge b-gov">PDP permit</span>';
+    if(s.stage==="eligibility_check"&&!s.blocked&&!s.policyDeclined) tool+='<span class="badge b-gov">judgement · within policy</span>';
+    if(s.policyDeclined) tool+='<span class="badge b-block">policy DECLINE</span>';
     if(s.blocked) tool+='<span class="badge b-block">guardrail BLOCK</span>';
     var params = s.params? '<div class="params">'+JSON.stringify(s.params,null,2)+'</div>':'';
+    var bad = s.blocked||s.policyDeclined;
     stepCard.innerHTML=
       '<div class="sh"><div class="stepno">'+s.step+'</div><div class="stitle">'+s.title+'</div>'+
       '<div class="who"><b>'+(s.stage||s.agent)+'</b><br>'+(s.zone==="prob"?'probabilistic':'deterministic')+'</div></div>'+
       '<div class="sb"><p class="sdetail">'+s.detail+'</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+who+tool+'</div>'+
-      params+'<div class="result'+(s.blocked?' bad':'')+'">'+s.result+'</div></div>';
+      params+'<div class="result'+(bad?' bad':'')+'">'+s.result+'</div></div>';
   }
 
   function showHandoff(h){
@@ -381,9 +410,101 @@
     terminal.innerHTML=
       '<div class="banner bad">⛔ Guardrail blocked the request — unsafe directive cannot override the control policy. No tools invoked, no handoff created.</div>';
   }
+  function showDeclined(limit){
+    terminal.classList.add("show");
+    terminal.innerHTML=
+      '<div class="banner bad">⛔ Transfer declined by policy — 2,000 THB exceeds the '+limit.toLocaleString()+
+      ' THB per-transaction limit. No handoff was created and no money moved.</div>'+
+      '<div class="handoff" style="border-color:#E3B0AB"><div class="hh" style="background:#FBEAE8;color:#7A1812">⎙ Judgement decision (no handoff)</div><div class="hb">'+
+      '<pre class="hobj">{\n'+
+      '  <span class="hk">"outcome"</span>: <span class="hbm">"POLICY_DECLINED"</span>,\n'+
+      '  <span class="hk">"ekyc_passed"</span>: <span class="hs">true</span>,\n'+
+      '  <span class="hk">"amount_thb"</span>: <span class="hs">2000</span>,\n'+
+      '  <span class="hk">"transfer_limit_thb"</span>: <span class="hs">'+limit+'</span>,\n'+
+      '  <span class="hbm">"reasons"</span>: [<span class="hbm">"exceeds_transfer_limit_'+limit+'_thb"</span>],\n'+
+      '  <span class="hk">"money_moved"</span>: <span class="hbm">false</span>\n}</pre>'+
+      '<div class="flags"><span class="flag req">raise limit to ≥ 2,000 to allow handoff</span>'+
+      '<span class="flag no">money_moved: false</span></div></div></div>';
+  }
 
   // ---- run control ----
   var player=null, running=false;
+  // EKYC confirm/cancel loop state. The customer may cancel up to MAX_CANCELS
+  // times (loop / re-prompt); a cancel beyond that aborts the flow (EKYC failed).
+  var MAX_CANCELS = 2, ekycCancelCount = 0, ekycStep = null;
+
+  function showEkycFailed(n){
+    terminal.classList.add("show");
+    terminal.innerHTML=
+      '<div class="banner bad">⛔ EKYC failed — identity confirmation was cancelled '+n+' times. '+
+      'The process has been cancelled. No account was accessed and no money moved.</div>'+
+      '<div class="handoff" style="border-color:#E3B0AB"><div class="hh" style="background:#FBEAE8;color:#7A1812">⎙ EKYC decision (no handoff)</div><div class="hb">'+
+      '<pre class="hobj">{\n'+
+      '  <span class="hk">"outcome"</span>: <span class="hbm">"EKYC_FAILED"</span>,\n'+
+      '  <span class="hk">"ekyc_passed"</span>: <span class="hbm">false</span>,\n'+
+      '  <span class="hk">"ekyc_cancel_count"</span>: <span class="hbm">'+n+'</span>,\n'+
+      '  <span class="hk">"reason"</span>: <span class="hbm">"cancelled_more_than_'+MAX_CANCELS+'_times"</span>,\n'+
+      '  <span class="hk">"account_accessed"</span>: <span class="hbm">false</span>,\n'+
+      '  <span class="hk">"money_moved"</span>: <span class="hbm">false</span>\n}</pre>'+
+      '<div class="flags"><span class="flag no">account_accessed: false</span>'+
+      '<span class="flag no">money_moved: false</span></div></div></div>';
+  }
+
+  // Render the interactive EKYC gate and pause the flow until the customer
+  // clicks Confirm or Cancel. Re-rendered on each cancel (the loop).
+  function showEkycGate(){
+    var s=ekycStep; if(!s) return;
+    stepCard.classList.add("show");
+    var attemptLine = ekycCancelCount>0
+      ? '<div class="result bad">Cancelled '+ekycCancelCount+' of '+(MAX_CANCELS+1)+' allowed · '+
+        (MAX_CANCELS+1-ekycCancelCount)+' cancel(s) left before the request is stopped.</div>'
+      : '';
+    stepCard.innerHTML=
+      '<div class="sh"><div class="stepno">'+s.step+'</div><div class="stitle">'+s.title+'</div>'+
+      '<div class="who"><b>ekyc_agent</b><br>awaiting customer</div></div>'+
+      '<div class="sb"><p class="sdetail">The EKYC agent needs you to confirm you are the account holder before any account is touched. No balance is read until you confirm.</p>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<span class="badge b-model">gpt-4o-mini</span>'+
+        '<span class="badge b-tool">confirm_identity (user_id, decision)</span>'+
+        '<span class="badge b-apim">via APIM</span></div>'+
+      attemptLine+
+      '<div style="display:flex;gap:10px;margin-top:12px">'+
+        '<button class="btn primary" id="ekycConfirmBtn">✓ Confirm identity</button>'+
+        '<button class="btn" id="ekycCancelBtn" style="border-color:#E3B0AB;color:#7A1812;background:#FBEAE8">✕ Cancel</button>'+
+      '</div></div>';
+    document.getElementById("ekycConfirmBtn").addEventListener("click", ekycConfirm);
+    document.getElementById("ekycCancelBtn").addEventListener("click", ekycCancel);
+    botMsg(ekycCancelCount>0
+      ? 'You cancelled identity confirmation. <b>Confirm</b> to continue or <b>Cancel</b> again ('+
+        (MAX_CANCELS+1-ekycCancelCount)+' left before I stop the request).'
+      : 'Before I can access your account, please <b>Confirm</b> that you are the account holder, or <b>Cancel</b>.');
+  }
+
+  function ekycConfirm(){
+    var s=ekycStep; if(!s) return;
+    setStage("ekyc","done");
+    renderStep(s); applyTokens(s); pushAudit(s.audit, false);
+    botMsg("Identity confirmed — thank you. Proceeding with your request.");
+    player.resume();
+  }
+
+  function ekycCancel(){
+    ekycCancelCount++;
+    pushAudit("EKYC cancelled by customer · attempt "+ekycCancelCount+" of "+(MAX_CANCELS+1), true);
+    if(ekycCancelCount > MAX_CANCELS){
+      setStage("ekyc","blocked");
+      player.stop(); running=false; sendBtn.disabled=false; sendBtn.textContent="▶ Send & run"; unsafe.disabled=false;
+      phaseLabel.textContent="EKYC failed";
+      stepCard.classList.remove("show"); stepCard.innerHTML="";
+      showEkycFailed(ekycCancelCount);
+      botMsg("EKYC failed — you cancelled identity confirmation "+ekycCancelCount+
+        " times. The request has been cancelled and no account was accessed.", true);
+      return;
+    }
+    // Loop: re-prompt the confirm/cancel gate.
+    showEkycGate();
+  }
+
   function buildPlayer(){
     var run = unsafe.checked ? runBad : runOk;
     userMsg.textContent = run.message;
@@ -392,17 +513,54 @@
       if(e.resumeFrom!==undefined) return;
       var s=e.step;
       phaseLabel.textContent=s.title;
+      // --- Interactive EKYC confirm/cancel gate (safe run only) ---
+      if(!unsafe.checked && s.stage==="ekyc"){
+        STAGE_IDS.forEach(function(id){ var el=nodeEl(id); if(el && el.classList.contains("working")) setStage(id,"done"); });
+        setStage("ekyc","working");
+        document.getElementById("g-pdp").classList.add("active");
+        ekycStep=s;
+        player.pause();          // hold the flow until the customer decides
+        showEkycGate();
+        return;
+      }
       // highlight stage
-      STAGE_IDS.forEach(function(id){ var el=nodeEl(id); if(el.classList.contains("working")) setStage(id,"done"); });
+      STAGE_IDS.forEach(function(id){ var el=nodeEl(id); if(el && el.classList.contains("working")) setStage(id,"done"); });
       if(s.blocked){
         document.getElementById("g-guard").classList.add("active");
         setStage("eligibility_check","blocked");
         document.getElementById("g-pdp").classList.remove("active");
-      } else {
-        setStage(s.stage,"working");
-        if(s.stage==="balance_lookup"||s.stage==="payee_resolution") document.getElementById("g-pdp").classList.add("active");
-        if(s.stage==="eligibility_check") document.getElementById("g-pdp").classList.add("active");
+        renderStep(s); applyTokens(s); pushAudit(s.audit, true);
+        return;
       }
+      // Judgement step — decide pass/decline against the live transfer-limit policy.
+      if(s.stage==="eligibility_check"){
+        var limit=A.getTransferLimit(), declined=DEMO_AMOUNT>limit;
+        document.getElementById("g-pdp").classList.add("active");
+        var sJ=Object.assign({},s,{policyDeclined:declined});
+        if(declined){
+          sJ.result="EKYC passed and the balance covers the amount, but 2,000 THB exceeds the "+
+            limit.toLocaleString()+" THB per-transaction limit → POLICY DECLINED. No handoff created.";
+          sJ.audit="JUDGEMENT decline · ekyc=pass · amount=2000 > limit="+limit+" · reason=exceeds_transfer_limit";
+          setStage("eligibility_check","blocked");
+        } else {
+          sJ.result="EKYC passed · balance covers 2,000 THB · 2,000 ≤ "+limit.toLocaleString()+
+            " THB limit → WITHIN POLICY. Step-up auth required for execution.";
+          sJ.audit="JUDGEMENT pass · ekyc=pass · amount=2000 ≤ limit="+limit+" · within_policy";
+          setStage("eligibility_check","working");
+        }
+        renderStep(sJ); applyTokens(sJ); pushAudit(sJ.audit, declined);
+        if(declined){
+          setStage("eligibility_check","blocked");
+          player.stop(); running=false; sendBtn.disabled=false; sendBtn.textContent="▶ Send & run"; unsafe.disabled=false;
+          phaseLabel.textContent="policy declined";
+          showDeclined(limit);
+          botMsg("You passed identity confirmation, but a transfer of <b>2,000 THB</b> exceeds the current limit of <b>"+
+            limit.toLocaleString()+" THB</b> per transaction. I won’t create a transfer handoff. Raise the policy limit to 2,000 THB or more to proceed.", true);
+        }
+        return;
+      }
+      setStage(s.stage,"working");
+      if(s.stage==="ekyc"||s.stage==="balance_lookup"||s.stage==="payee_resolution") document.getElementById("g-pdp").classList.add("active");
       renderStep(s);
       applyTokens(s);
       pushAudit(s.audit, !!s.blocked);
@@ -423,6 +581,7 @@
 
   function fullReset(){
     if(player) player.stop();
+    ekycCancelCount=0; ekycStep=null;
     resetStages(); stepCard.classList.remove("show"); stepCard.innerHTML="";
     terminal.classList.remove("show"); terminal.innerHTML="";
     live={prompt:0,completion:0,total:0}; runningCost=0; auditN=0;
@@ -446,8 +605,37 @@
   resetBtn.addEventListener("click", function(){ unsafe.disabled=false; fullReset(); });
   unsafe.addEventListener("change", function(){ fullReset(); });
 
-  // init message text
+  // ---- transfer-limit policy editor ----
+  var limitInput=document.getElementById("limitInput"),
+      applyLimitBtn=document.getElementById("applyLimitBtn"),
+      policyState=document.getElementById("policyState");
+  function renderPolicyState(){
+    var limit=A.getTransferLimit(), declined=DEMO_AMOUNT>limit;
+    policyState.style.borderLeftColor = declined ? "var(--blocked)" : "var(--ok)";
+    policyState.style.background = declined ? "#FBEAE8" : "#F2F9F4";
+    policyState.style.color = declined ? "#7A1812" : "#234a2c";
+    policyState.innerHTML = "Active limit: <b>"+limit.toLocaleString()+" THB</b> · demo transfer is <b>"+
+      DEMO_AMOUNT.toLocaleString()+" THB</b> → currently <b>"+(declined?"declined":"allowed")+"</b> by policy.";
+  }
+  function applyLimit(){
+    var v=Number(limitInput.value);
+    if(!isFinite(v)||v<=0){ limitInput.value=A.getTransferLimit(); return; }
+    A.setTransferLimit(v);
+    limitInput.value=v;
+    renderPolicyState();
+    // Best-effort sync to the live backend (no-op when served from file://).
+    try{
+      fetch("/api/banking/policy",{method:"PUT",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({transfer_limit_thb_per_txn:v})}).catch(function(){});
+    }catch(e){}
+    if(!running) fullReset();
+  }
+  applyLimitBtn.addEventListener("click", applyLimit);
+  limitInput.addEventListener("keydown", function(e){ if(e.key==="Enter") applyLimit(); });
+
+  // init message text + policy readout
   userMsg.textContent = runOk.message;
+  renderPolicyState();
 })();
 </script>
 </body>

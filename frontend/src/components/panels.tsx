@@ -13,6 +13,7 @@ const STATUS_LABEL: Record<RunStatus, string> = {
   playing: "playing",
   paused: "paused",
   awaiting_approval: "awaiting approval",
+  awaiting_ekyc: "awaiting EKYC",
   done: "done",
   blocked: "blocked",
 };
@@ -36,7 +37,7 @@ export function RunControls({
 }) {
   const playing = status === "playing";
   const terminal = status === "done" || status === "blocked";
-  const gated = status === "awaiting_approval";
+  const gated = status === "awaiting_approval" || status === "awaiting_ekyc";
   const shouldDisable = !!disabled;
   const disablePlay = (terminal && !allowReplayTerminal) || gated || shouldDisable;
   return (

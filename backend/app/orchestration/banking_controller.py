@@ -6,8 +6,17 @@ separation between:
 
   * Probabilistic zone (model/heuristic): intent decomposition, slot filling,
     conditional logic.
-  * Deterministic zone (ENFORCED, not prompt-driven): guardrails, APIM tool
-    scopes / PDP, and the terminal handoff.
+  * Deterministic zone (ENFORCED, not prompt-driven): guardrails, EKYC identity
+    confirmation, APIM tool scopes / PDP, the transfer-limit judgement, and the
+    terminal handoff.
+
+Specialist steps (each deterministic in mock mode):
+  * EKYC (``ekyc_agent``): the customer confirms they are the account holder;
+    no account is touched until this passes.
+  * Bank query (``bank_query``): reads the account snapshot (balance/status).
+  * Judgement (``judgement_agent``): decides whether the transfer may proceed by
+    combining EKYC pass, sufficient remaining balance, and the bank transfer-limit
+    policy (default 1500 THB per transaction, adjustable via /api/banking/policy).
 
 HARD RULE (POC_SPEC.md): **no money movement**. The terminal action is always
 ``request_transaction_handoff`` producing an auditable handoff object with
@@ -84,6 +93,10 @@ class GuardrailViolation(Exception):
 
 class BankingController:
     """Deterministic SEQUENTIAL_CONDITIONAL banking control flow."""
+
+    # EKYC confirm/cancel loop: the customer may cancel up to this many times
+    # (re-prompt loop). A cancel beyond this aborts the flow as EKYC_FAILED.
+    MAX_EKYC_CANCELS = 2
 
     def __init__(self) -> None:
         # The probabilistic zone is represented by a single controller agent.
@@ -275,25 +288,97 @@ class BankingController:
             src_account=msg.src_account,
         )
 
-        # === Step: check balance ===========================================
+        # === Step: EKYC identity confirmation (confirm/cancel loop) =========
+        # The customer is asked to Confirm or Cancel that they are the account
+        # holder. Confirm -> proceed. Cancel -> re-prompt (loop). More than two
+        # cancels -> abort the whole flow as EKYC_FAILED. ``identity_confirmed``
+        # is kept for backward compatibility (== ekyc_decision == "confirm").
+        step += 1
+        confirmed = bool(msg.identity_confirmed) or msg.ekyc_decision == "confirm"
+        ekyc = registry.confirm_identity(
+            msg.user_id,
+            confirmed,
+            caller_agent="ekyc_agent",
+        )
+        self._trace(
+            run, step, "confirm_identity",
+            inp={
+                "user_id": msg.user_id,
+                "ekyc_decision": msg.ekyc_decision
+                or ("confirm" if msg.identity_confirmed else None),
+                "ekyc_cancel_count": msg.ekyc_cancel_count,
+            },
+            out=ekyc,
+            status=StepStatus.OK if ekyc.get("ekyc_passed") else StepStatus.BLOCKED,
+            note="EKYC — customer must Confirm (or Cancel) they are the account holder before any account action.",
+        )
+        name = ekyc.get("display_name") or "the account holder"
+
+        # Unknown customer profile -> always a hard EKYC failure.
+        if not ekyc.get("user_found", False):
+            run.status = RunStatus.COMPLETED
+            audit_store.save_run(run)
+            return BankingResponse(
+                run_id=run.run_id, outcome="EKYC_FAILED",
+                message="EKYC failed: we could not find your customer profile. No account was accessed.",
+                ekyc=ekyc, ekyc_cancel_count=msg.ekyc_cancel_count, steps=run.steps,
+            )
+
+        if not ekyc.get("ekyc_passed"):
+            run.status = RunStatus.COMPLETED
+            audit_store.save_run(run)
+            if msg.ekyc_decision == "cancel":
+                new_count = msg.ekyc_cancel_count + 1
+                if new_count > self.MAX_EKYC_CANCELS:
+                    # Cancelled more than twice -> cancel the whole process.
+                    return BankingResponse(
+                        run_id=run.run_id, outcome="EKYC_FAILED",
+                        message=(
+                            f"EKYC failed: identity confirmation was cancelled {new_count} times. "
+                            "The process has been cancelled and no account was accessed."
+                        ),
+                        ekyc=ekyc, ekyc_cancel_count=new_count, steps=run.steps,
+                    )
+                # Loop: re-prompt the confirm/cancel gate.
+                remaining = self.MAX_EKYC_CANCELS + 1 - new_count
+                return BankingResponse(
+                    run_id=run.run_id, outcome="EKYC_REQUIRED",
+                    message=(
+                        f"Identity confirmation cancelled (attempt {new_count} of "
+                        f"{self.MAX_EKYC_CANCELS + 1}). Please confirm you are {name} to continue, "
+                        f"or cancel. {remaining} cancel(s) remaining before the request is stopped."
+                    ),
+                    ekyc=ekyc, ekyc_cancel_count=new_count, steps=run.steps,
+                )
+            # No decision yet -> initial confirm/cancel prompt.
+            return BankingResponse(
+                run_id=run.run_id, outcome="EKYC_REQUIRED",
+                message=(
+                    f"Before I can access your account, please confirm you are {name}. "
+                    "Choose Confirm to proceed, or Cancel."
+                ),
+                ekyc=ekyc, ekyc_cancel_count=msg.ekyc_cancel_count, steps=run.steps,
+            )
+
+        # === Step: bank query (account snapshot) ===========================
         step += 1
         src_account = msg.src_account
         if src_account is None:
             # default to the user's first account in synthetic data
             src_account = self._default_account(msg.user_id)
             slots.src_account = src_account
-        balance_res = registry.get_balance(
+        balance_res = registry.query_bank_account(
             msg.user_id,
             src_account,
-            caller_agent="banking_controller",
+            caller_agent="bank_query",
         )
-        self._trace(run, step, "get_balance", inp={"user_id": msg.user_id, "account_id": src_account}, out=balance_res)
+        self._trace(run, step, "query_bank_account", inp={"user_id": msg.user_id, "account_id": src_account}, out=balance_res)
         if "error" in balance_res:
             run.status = RunStatus.FAILED
             audit_store.save_run(run)
             return BankingResponse(
                 run_id=run.run_id, outcome="INFO",
-                message=f"Could not read balance: {balance_res['error']}.", steps=run.steps,
+                message=f"Could not read account: {balance_res['error']}.", ekyc=ekyc, steps=run.steps,
             )
         balance = float(balance_res["balance_thb"])
 
@@ -303,7 +388,7 @@ class BankingController:
             audit_store.save_run(run)
             return BankingResponse(
                 run_id=run.run_id, outcome="INFO",
-                message=f"Your {src_account} balance is {balance:,.2f} THB.", steps=run.steps,
+                message=f"Your {src_account} balance is {balance:,.2f} THB.", ekyc=ekyc, steps=run.steps,
             )
 
         # === Conditional logic (probabilistic zone) ========================
@@ -324,7 +409,7 @@ class BankingController:
                     f"Balance {balance:,.2f} THB is not above the {threshold:,.0f} THB "
                     "threshold, so no transfer was prepared."
                 ),
-                steps=run.steps,
+                ekyc=ekyc, steps=run.steps,
             )
 
         # === Resolve payee =================================================
@@ -340,31 +425,52 @@ class BankingController:
             audit_store.save_run(run)
             return BankingResponse(
                 run_id=run.run_id, outcome="INFO",
-                message=f"Could not resolve payee '{slots.payee_alias}'.", steps=run.steps,
+                message=f"Could not resolve payee '{slots.payee_alias}'.", ekyc=ekyc, steps=run.steps,
             )
         slots.payee_id = payee_res["payee_id"]
 
-        # === Deterministic PDP: eligibility (still no money movement) ======
+        # === Judgement: EKYC + funds + transfer-limit policy (no money moves) ===
         step += 1
-        elig = registry.check_transfer_eligibility(
+        judgement = registry.evaluate_transfer_judgement(
             msg.user_id,
             src_account,
             slots.payee_id,
             float(slots.amount_thb),
-            caller_agent="banking_controller",
+            ekyc_passed=bool(ekyc.get("ekyc_passed")),
+            caller_agent="judgement_agent",
         )
-        self._trace(run, step, "check_transfer_eligibility", inp={"amount": slots.amount_thb}, out=elig)
+        self._trace(
+            run, step, "evaluate_transfer_judgement",
+            inp={"amount": slots.amount_thb, "transfer_limit_thb": judgement.get("transfer_limit_thb")},
+            out=judgement,
+            status=StepStatus.OK if judgement.get("passed") else StepStatus.BLOCKED,
+            note="Judgement combines EKYC pass, sufficient funds, and the bank transfer-limit policy.",
+        )
         policy = PolicyResult(
-            eligible=bool(elig.get("eligible")),
-            reasons=list(elig.get("reasons", [])),
-            scope_ok=bool(elig.get("scope_ok", True)),
+            eligible=bool(judgement.get("passed")),
+            reasons=list(judgement.get("reasons", [])),
+            scope_ok=bool(judgement.get("scope_ok", True)),
         )
         if not policy.eligible:
             run.status = RunStatus.COMPLETED
             audit_store.save_run(run)
+            limit = judgement.get("transfer_limit_thb")
+            policy_breached = any(
+                r.startswith("exceeds_transfer_limit") or r == "ekyc_not_passed"
+                for r in policy.reasons
+            )
+            outcome = "POLICY_DECLINED" if policy_breached else "CONDITION_NOT_MET"
+            if any(r.startswith("exceeds_transfer_limit") for r in policy.reasons) and limit is not None:
+                detail = (
+                    f"the {float(slots.amount_thb):,.0f} THB transfer exceeds the "
+                    f"{float(limit):,.0f} THB per-transaction limit"
+                )
+            else:
+                detail = ", ".join(policy.reasons)
             return BankingResponse(
-                run_id=run.run_id, outcome="CONDITION_NOT_MET",
-                message=f"Transfer not eligible: {', '.join(policy.reasons)}.", steps=run.steps,
+                run_id=run.run_id, outcome=outcome,
+                message=f"Transfer declined by judgement: {detail}. No money has moved.",
+                ekyc=ekyc, judgement=judgement, steps=run.steps,
             )
 
         # === TERMINAL: request_transaction_handoff (NO MONEY MOVES) ========
@@ -407,6 +513,8 @@ class BankingController:
                 "It requires your confirmation and step-up authentication to proceed."
             ),
             handoff=handoff,
+            ekyc=ekyc,
+            judgement=judgement,
             steps=run.steps,
         )
 

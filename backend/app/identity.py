@@ -34,6 +34,13 @@ class AgentIdentity:
     agent: str
     client_id_setting: str  # which Settings field holds the client id
     app_role: str  # logical least-privilege role name
+    # Whether this agent is invoked at runtime as its OWN Foundry agent (and
+    # therefore requires a provisioned Foundry AgentID). Governance-only entries
+    # (e.g. conversational-banking sub-steps that run inside the
+    # ``banking_controller`` flow rather than as separate Foundry agents) set
+    # this False so they carry an Entra role + governance binding WITHOUT
+    # gating startup on a Foundry AgentID mapping.
+    requires_foundry_agent: bool = True
 
     @property
     def client_id(self) -> Optional[str]:
@@ -48,8 +55,37 @@ AGENT_IDENTITIES: dict[str, AgentIdentity] = {
     "financial_ratio": AgentIdentity("financial_ratio", "entra_orchestrator_client_id", "reader.financials"),
     "bureau_summary": AgentIdentity("bureau_summary", "entra_orchestrator_client_id", "reader.bureau"),
     "memo_assembler": AgentIdentity("memo_assembler", "entra_orchestrator_client_id", "writer.memo"),
-    # UC2 controller
+    # UC2 controller + conversational-banking sub-agents
     "banking_controller": AgentIdentity("banking_controller", "entra_orchestrator_client_id", "controller.banking"),
+    # EKYC identity-confirmation agent — may only run the EKYC verify tool.
+    # These three run inside the banking_controller flow (not as separate
+    # runtime Foundry agents yet), so requires_foundry_agent=False keeps them
+    # off the startup AgentID-coverage gate while still carrying Entra roles.
+    "ekyc_agent": AgentIdentity(
+        "ekyc_agent", "entra_orchestrator_client_id", "verifier.ekyc", requires_foundry_agent=False
+    ),
+    # Bank-query agent — read-only account snapshot (balance/status); moves no money.
+    "bank_query": AgentIdentity(
+        "bank_query", "entra_orchestrator_client_id", "reader.account", requires_foundry_agent=False
+    ),
+    # Judgement agent — deterministic transfer-limit decision; moves no money.
+    "judgement_agent": AgentIdentity(
+        "judgement_agent", "entra_orchestrator_client_id", "judge.transfer", requires_foundry_agent=False
+    ),
+    # UC2 as a Foundry HOSTED AGENT — the banking-control flow packaged and
+    # deployed as a containerized hosted agent (backend/hosted_agents/banking-
+    # control). It authenticates with its OWN user-assigned managed identity
+    # (resolved from AZURE_CLIENT_ID at runtime) rather than the orchestrator
+    # identity, so it has a dedicated client-id setting. requires_foundry_agent
+    # is False because it is deployed/registered as its own hosted endpoint
+    # (not invoked as an in-process sub-agent of the orchestrator), so it must
+    # not gate the orchestrator's Foundry AgentID-coverage startup check.
+    "banking_control_hosted": AgentIdentity(
+        "banking_control_hosted",
+        "entra_banking_hosted_client_id",
+        "controller.banking",
+        requires_foundry_agent=False,
+    ),
 }
 
 
@@ -87,7 +123,17 @@ def identity_for(agent: str) -> AgentIdentity:
 
 
 def validate_foundry_agent_id_coverage() -> list[str]:
-    """Return logical agent names missing a Foundry AgentID mapping."""
-    required = set(AGENT_IDENTITIES.keys())
+    """Return logical agent names missing a Foundry AgentID mapping.
+
+    Only agents invoked at runtime as their own Foundry agent
+    (``requires_foundry_agent=True``) are required to have a mapping.
+    Governance-only identity entries are excluded so they can declare an Entra
+    role / governance binding without being provisioned in Foundry.
+    """
+    required = {
+        name
+        for name, ident in AGENT_IDENTITIES.items()
+        if ident.requires_foundry_agent
+    }
     mapped = set(settings.foundry_agent_ids.keys())
     return sorted(required - mapped)

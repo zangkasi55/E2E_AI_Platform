@@ -1,8 +1,11 @@
 {
-  "memo_orchestrator": "memo-orchestrator:3",
-  "doc_retrieval": "doc-retrieval:2",
-  "financial_ratio": "financial-ratio:2",
-  "bureau_summary": "bureau-summary:2",
-  "memo_assembler": "memo-assembler:2",
-  "banking_controller": "banking-controller:2"
+  "memo_orchestrator": "memo-orchestrator:4",
+  "doc_retrieval": "doc-retrieval:3",
+  "financial_ratio": "financial-ratio:3",
+  "bureau_summary": "bureau-summary:3",
+  "memo_assembler": "memo-assembler:3",
+  "banking_controller": "banking-controller:3",
+  "ekyc_agent": "ekyc-agent:1",
+  "bank_query": "bank-query:1",
+  "judgement_agent": "judgement-agent:1"
 }

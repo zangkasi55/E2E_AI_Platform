@@ -39,12 +39,13 @@ def test_no_execute_transfer_tool_exists():
 
 
 def test_banking_canonical_creates_handoff_not_transfer():
-    """Canonical scenario: balance > 5000 -> handoff object, no money moved."""
+    """Canonical scenario: EKYC confirmed, balance > 5000, within 1500 limit -> handoff."""
     resp = banking_controller.handle(
         BankingMessage(
             user_id="USR-001",
             src_account="ACC-001-CUR",
-            message="Check my balance; if it's over 5000 baht, transfer 2000 to mom.",
+            identity_confirmed=True,
+            message="Check my balance; if it's over 5000 baht, transfer 1000 to mom.",
         )
     )
     assert resp.outcome == "HANDOFF_CREATED"
@@ -53,6 +54,61 @@ def test_banking_canonical_creates_handoff_not_transfer():
     assert resp.handoff.requires_confirmation is True
     assert resp.handoff.requires_step_up_auth is True
     assert resp.handoff.status == "pending_human_confirmation"
+    # EKYC passed and judgement is recorded on the response.
+    assert resp.ekyc is not None and resp.ekyc["ekyc_passed"] is True
+    assert resp.judgement is not None and resp.judgement["passed"] is True
+
+
+def test_banking_requires_ekyc_before_account_access():
+    """Without identity confirmation, the controller asks for EKYC and touches no account."""
+    resp = banking_controller.handle(
+        BankingMessage(
+            user_id="USR-001",
+            src_account="ACC-001-CUR",
+            message="Transfer 1000 to mom.",
+        )
+    )
+    assert resp.outcome == "EKYC_REQUIRED"
+    assert resp.handoff is None
+    # Only intent decomposition + the EKYC step ran; no balance/payee/judgement.
+    actions = [s.action for s in resp.steps]
+    assert "confirm_identity" in actions
+    assert "query_bank_account" not in actions
+
+
+def test_banking_transfer_over_policy_limit_is_declined():
+    """A transfer above the 1500 THB per-txn limit is declined by judgement (no handoff)."""
+    resp = banking_controller.handle(
+        BankingMessage(
+            user_id="USR-001",
+            src_account="ACC-001-CUR",
+            identity_confirmed=True,
+            message="Check my balance; if it's over 5000 baht, transfer 2000 to mom.",
+        )
+    )
+    assert resp.outcome == "POLICY_DECLINED"
+    assert resp.handoff is None
+    assert resp.judgement is not None and resp.judgement["passed"] is False
+    assert any(r.startswith("exceeds_transfer_limit") for r in resp.judgement["reasons"])
+
+
+def test_banking_policy_is_adjustable_and_changes_judgement():
+    """Raising the transfer limit lets a previously-declined transfer reach handoff."""
+    original = registry.get_bank_policy()["transfer_limit_thb_per_txn"]
+    try:
+        registry.set_bank_policy(3000.0)
+        resp = banking_controller.handle(
+            BankingMessage(
+                user_id="USR-001",
+                src_account="ACC-001-CUR",
+                identity_confirmed=True,
+                message="Check my balance; if it's over 5000 baht, transfer 2000 to mom.",
+            )
+        )
+        assert resp.outcome == "HANDOFF_CREATED"
+        assert resp.judgement["transfer_limit_thb"] == 3000.0
+    finally:
+        registry.set_bank_policy(original)
 
 
 def test_handoff_tool_never_executes():
@@ -73,7 +129,8 @@ def test_condition_below_threshold_blocks_transfer():
         BankingMessage(
             user_id="USR-002",
             src_account="ACC-002-SAV",
-            message="Check my balance and if above 5000 send 2000 to mom.",
+            identity_confirmed=True,
+            message="Check my balance and if above 5000 send 1000 to mom.",
         )
     )
     assert resp.outcome == "CONDITION_NOT_MET"

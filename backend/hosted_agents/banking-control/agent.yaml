@@ -1,0 +1,30 @@
+kind: hosted
+name: banking-control-hosted
+protocols:
+  - protocol: responses
+    version: 1.0.0
+resources:
+  cpu: "0.5"
+  memory: 1.0Gi
+environment_variables:
+  # --- Model + policy ---
+  - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+    value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+  - name: BANK_TRANSFER_LIMIT_THB
+    value: ${BANK_TRANSFER_LIMIT_THB}
+  # --- Entra ID (managed identity) ---
+  - name: AZURE_CLIENT_ID
+    value: ${AZURE_CLIENT_ID}
+  # --- Observability / tracing -> App Insights + Foundry Observability ---
+  - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+    value: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
+  - name: OTEL_ENABLE_SENSITIVE_DATA
+    value: ${OTEL_ENABLE_SENSITIVE_DATA}
+  # --- Data security policy (Purview / DSPM reference) ---
+  - name: PURVIEW_ACCOUNT_NAME
+    value: ${PURVIEW_ACCOUNT_NAME}
+  - name: GOVERNANCE_POLICY_ID
+    value: ${GOVERNANCE_POLICY_ID}
+  # --- Multi-agent registration (4 separate Foundry PromptAgents) ---
+  - name: FOUNDRY_REGISTER_AGENTS
+    value: ${FOUNDRY_REGISTER_AGENTS}

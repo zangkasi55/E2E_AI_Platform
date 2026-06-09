@@ -64,6 +64,9 @@ DEFAULT_GRANTED_SCOPES: set[str] = {
     "tools.payee.read",
     "tools.transfer.evaluate",
     "tools.handoff.create",
+    "tools.ekyc.verify",
+    "tools.account.query",
+    "tools.judgement.evaluate",
 }
 
 
@@ -433,6 +436,121 @@ def evaluate_credit_policy(
 # ===========================================================================
 # UC2 — Banking tools
 # ===========================================================================
+# ---------------------------------------------------------------------------
+# Bank transfer-limit policy (deterministic, adjustable at runtime)
+# ---------------------------------------------------------------------------
+# Seeded from data/banking/policy.json. The per-transaction transfer limit is
+# adjustable via set_bank_policy (exposed by the /api/banking/policy endpoint and
+# the UI policy editor). Kept in-process so the PoC needs no datastore; the live
+# system would persist this in a policy store fronted by the PDP.
+_POLICY_OVERRIDE: dict[str, Any] | None = None
+
+
+def _seed_bank_policy() -> dict[str, Any]:
+    """Load the seed bank policy from synthetic data (cached)."""
+    return dict(_load_json("banking/policy.json"))
+
+
+def get_bank_policy() -> dict[str, Any]:
+    """Return the active bank transfer policy (override if set, else the seed)."""
+    if _POLICY_OVERRIDE is not None:
+        return dict(_POLICY_OVERRIDE)
+    return _seed_bank_policy()
+
+
+def set_bank_policy(transfer_limit_thb_per_txn: float) -> dict[str, Any]:
+    """Update the per-transaction transfer limit and return the active policy.
+
+    Deterministic, non-prompt-driven control. Raises ``ValueError`` for a
+    non-positive limit.
+    """
+    global _POLICY_OVERRIDE
+    limit = float(transfer_limit_thb_per_txn)
+    if limit <= 0:
+        raise ValueError("transfer_limit_thb_per_txn must be greater than 0")
+    policy = get_bank_policy()
+    policy["transfer_limit_thb_per_txn"] = limit
+    _POLICY_OVERRIDE = policy
+    return dict(policy)
+
+
+def transfer_limit_thb() -> float:
+    """Convenience accessor for the active per-transaction transfer limit."""
+    return float(get_bank_policy().get("transfer_limit_thb_per_txn", 0.0))
+
+
+def confirm_identity(
+    user_id: str,
+    identity_confirmed: bool,
+    *,
+    granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """EKYC — record the customer's confirmation that they are the account holder.
+
+    ``ekyc_passed`` is True only when the user exists AND the customer confirmed
+    their identity. Moves no money and reads no balances.
+    """
+    _check_scope("confirm_identity", granted_scopes)
+
+    def mock() -> dict[str, Any]:
+        users = _load_json("banking/users.json")["users"]
+        user = next((u for u in users if u["user_id"] == user_id), None)
+        display_name = user.get("display_name") if user else None
+        user_found = user is not None
+        confirmed = bool(identity_confirmed)
+        return {
+            "user_id": user_id,
+            "display_name": display_name,
+            "user_found": user_found,
+            "identity_confirmed": confirmed,
+            "method": "customer_confirmation",
+            "ekyc_passed": user_found and confirmed,
+        }
+
+    return _invoke(
+        "confirm_identity",
+        {"user_id": user_id, "identity_confirmed": bool(identity_confirmed)},
+        mock,
+        caller_agent=caller_agent,
+    )
+
+
+def query_bank_account(
+    user_id: str,
+    account_id: str,
+    *,
+    granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """Bank-query — read an account snapshot (balance, currency, status). Read-only."""
+    _check_scope("query_bank_account", granted_scopes)
+
+    def mock() -> dict[str, Any]:
+        bal = get_balance(
+            user_id,
+            account_id,
+            granted_scopes=granted_scopes,
+            caller_agent=caller_agent,
+        )
+        if "error" in bal:
+            return bal
+        return {
+            "user_id": user_id,
+            "account_id": account_id,
+            "balance_thb": bal["balance_thb"],
+            "currency": bal.get("currency", "THB"),
+            "account_status": "active",
+        }
+
+    return _invoke(
+        "query_bank_account",
+        {"user_id": user_id, "account_id": account_id},
+        mock,
+        caller_agent=caller_agent,
+    )
+
+
 def get_balance(
     user_id: str,
     account_id: str,
@@ -554,6 +672,87 @@ def check_transfer_eligibility(
     )
 
 
+def evaluate_transfer_judgement(
+    user_id: str,
+    src_account: str,
+    payee_id: str,
+    amount: float,
+    ekyc_passed: bool,
+    *,
+    granted_scopes: Optional[set[str]] = None,
+    caller_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """Judgement — decide whether a transfer may proceed to handoff. Moves NO money.
+
+    Combines three deterministic checks:
+      1. EKYC must have passed (``ekyc_passed``).
+      2. Base eligibility (source valid, amount positive, sufficient remaining
+         balance) via :func:`check_transfer_eligibility`.
+      3. The per-transaction bank transfer-limit policy (default 1500 THB).
+
+    Returns a judgement dict (``passed`` plus structured reasons) consumed by the
+    controller to build the handoff or decline.
+    """
+    _check_scope("evaluate_transfer_judgement", granted_scopes)
+
+    def mock() -> dict[str, Any]:
+        policy = get_bank_policy()
+        limit = float(policy.get("transfer_limit_thb_per_txn", 0.0))
+        elig = check_transfer_eligibility(
+            user_id,
+            src_account,
+            payee_id,
+            amount,
+            granted_scopes=granted_scopes,
+            caller_agent=caller_agent,
+        )
+        reasons: list[str] = []
+        passed = True
+
+        if not ekyc_passed:
+            passed = False
+            reasons.append("ekyc_not_passed")
+
+        # Carry forward base-eligibility failures (insufficient funds, etc.).
+        if not elig.get("eligible", False):
+            passed = False
+            for r in elig.get("reasons", []):
+                if r != "within_policy" and r not in reasons:
+                    reasons.append(r)
+
+        # Per-transaction transfer-limit policy.
+        if amount > limit:
+            passed = False
+            reasons.append(f"exceeds_transfer_limit_{limit:.0f}_thb")
+
+        if passed:
+            reasons.append("within_policy")
+
+        return {
+            "passed": passed,
+            "eligible": passed,
+            "reasons": reasons,
+            "scope_ok": bool(elig.get("scope_ok", True)),
+            "ekyc_passed": bool(ekyc_passed),
+            "amount_thb": float(amount),
+            "transfer_limit_thb": limit,
+            "checked_balance_thb": elig.get("checked_balance_thb"),
+        }
+
+    return _invoke(
+        "evaluate_transfer_judgement",
+        {
+            "user_id": user_id,
+            "src_account": src_account,
+            "payee_id": payee_id,
+            "amount": amount,
+            "ekyc_passed": bool(ekyc_passed),
+        },
+        mock,
+        caller_agent=caller_agent,
+    )
+
+
 def request_transaction_handoff(
     intent: str,
     slots: dict[str, Any],
@@ -594,9 +793,12 @@ TOOL_REGISTRY = {
     "calculate_ratios": calculate_ratios,
     "get_bureau_report": get_bureau_report,
     "render_memo": render_memo,
+    "confirm_identity": confirm_identity,
     "get_balance": get_balance,
+    "query_bank_account": query_bank_account,
     "resolve_payee": resolve_payee,
     "check_transfer_eligibility": check_transfer_eligibility,
+    "evaluate_transfer_judgement": evaluate_transfer_judgement,
     "request_transaction_handoff": request_transaction_handoff,
 }
 

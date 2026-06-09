@@ -16,6 +16,10 @@ import type {
 import { estCost } from "../theme";
 
 const TICK_MS = 1900;
+// EKYC identity gate: the customer may Cancel up to this many times; the next
+// cancel aborts the run (EKYC_FAILED). Mirrors the backend banking controller
+// (MAX_EKYC_CANCELS).
+const MAX_EKYC_CANCELS = 2;
 
 export interface AuditEntry {
   step: number;
@@ -42,6 +46,10 @@ interface PlayerState {
   approved: boolean;
   hitlDecision: "approved" | "rejected" | null;
   hitlReason: string;
+  // EKYC identity gate.
+  ekycCancelCount: number;
+  ekycConfirmed: boolean;
+  ekycFailed: boolean;
 }
 
 type Action =
@@ -51,7 +59,9 @@ type Action =
   | { type: "pause" }
   | { type: "reset" }
   | { type: "approve"; reason?: string }
-  | { type: "reject"; reason: string };
+  | { type: "reject"; reason: string }
+  | { type: "ekyc_confirm" }
+  | { type: "ekyc_cancel" };
 
 const EMPTY_TOTALS: TokenTotals = { prompt: 0, completion: 0, total: 0, cost: 0 };
 
@@ -68,6 +78,9 @@ function initialState(run: RunDef | null): PlayerState {
     approved: false,
     hitlDecision: null,
     hitlReason: "",
+    ekycCancelCount: 0,
+    ekycConfirmed: false,
+    ekycFailed: false,
   };
 }
 
@@ -129,7 +142,7 @@ function reducer(state: PlayerState, action: Action): PlayerState {
 
     case "play":
       if (!state.run || state.status === "done" || state.status === "blocked") return state;
-      if (state.status === "awaiting_approval") return state;
+      if (state.status === "awaiting_approval" || state.status === "awaiting_ekyc") return state;
       return { ...state, status: "playing" };
 
     case "pause":
@@ -146,6 +159,7 @@ function reducer(state: PlayerState, action: Action): PlayerState {
 
       // Terminal / gating states.
       if (step.blocked) return { ...applied, status: "blocked" };
+      if (step.ekyc) return { ...applied, status: "awaiting_ekyc" };
       if (step.hitl) return { ...applied, status: "awaiting_approval" };
       if (next === steps.length - 1) return { ...applied, status: "done" };
       return { ...applied, status: state.status === "paused" ? "paused" : "playing" };
@@ -219,6 +233,53 @@ function reducer(state: PlayerState, action: Action): PlayerState {
       };
     }
 
+    case "ekyc_confirm": {
+      if (state.status !== "awaiting_ekyc") return state;
+      const stepNo = state.index >= 0 && state.run?.steps[state.index] ? state.run.steps[state.index].step : 0;
+      const audit = [
+        ...state.audit,
+        { step: stepNo, kind: "sec" as const, text: "EKYC decision=CONFIRM · identity confirmed · proceeding" },
+      ];
+      // Resume playback past the EKYC gate.
+      return { ...state, status: "playing", ekycConfirmed: true, audit };
+    }
+
+    case "ekyc_cancel": {
+      if (state.status !== "awaiting_ekyc") return state;
+      const stepNo = state.index >= 0 && state.run?.steps[state.index] ? state.run.steps[state.index].step : 0;
+      const nextCount = state.ekycCancelCount + 1;
+      if (nextCount > MAX_EKYC_CANCELS) {
+        // Cancelled more than the allowed number of times → abort the process.
+        const audit = [
+          ...state.audit,
+          {
+            step: stepNo,
+            kind: "block" as const,
+            text: `EKYC decision=CANCEL (#${nextCount}) · EKYC_FAILED · cancelled more than ${MAX_EKYC_CANCELS} times · process cancelled`,
+          },
+        ];
+        return {
+          ...state,
+          status: "blocked",
+          ekycCancelCount: nextCount,
+          ekycFailed: true,
+          blocked: true,
+          audit,
+        };
+      }
+      // Within the allowed retries → stay at the gate and ask again.
+      const remaining = MAX_EKYC_CANCELS + 1 - nextCount;
+      const audit = [
+        ...state.audit,
+        {
+          step: stepNo,
+          kind: "sec" as const,
+          text: `EKYC decision=CANCEL (#${nextCount}) · ${remaining} attempt(s) left · awaiting confirmation`,
+        },
+      ];
+      return { ...state, status: "awaiting_ekyc", ekycCancelCount: nextCount, audit };
+    }
+
     default:
       return state;
   }
@@ -238,6 +299,9 @@ export interface RunPlayer {
   approved: boolean;
   hitlDecision: "approved" | "rejected" | null;
   hitlReason: string;
+  ekycCancelCount: number;
+  ekycConfirmed: boolean;
+  ekycFailed: boolean;
   /** agentId/stage → status, for pure flow-graph rendering. */
   nodeStatus: (nodeId: string) => AgentStatus;
   play(): void;
@@ -246,6 +310,8 @@ export interface RunPlayer {
   reset(): void;
   approve(reason?: string): void;
   reject(reason: string): void;
+  ekycConfirm(): void;
+  ekycCancel(): void;
 }
 
 /**
@@ -293,6 +359,8 @@ export function useRunPlayer(run: RunDef | null): RunPlayer {
   const reset = useCallback(() => dispatch({ type: "reset" }), []);
   const approve = useCallback((reason?: string) => dispatch({ type: "approve", reason }), []);
   const reject = useCallback((reason: string) => dispatch({ type: "reject", reason }), []);
+  const ekycConfirm = useCallback(() => dispatch({ type: "ekyc_confirm" }), []);
+  const ekycCancel = useCallback(() => dispatch({ type: "ekyc_cancel" }), []);
 
   const steps = state.run?.steps ?? [];
   const current = state.index >= 0 && state.index < steps.length ? steps[state.index] : null;
@@ -315,7 +383,10 @@ export function useRunPlayer(run: RunDef | null): RunPlayer {
         if (activeStep?.blocked || state.status === "blocked") return "blocked";
         if (state.status === "done") return "done";
         // working while playing/paused/awaiting; the active node holds focus
-        return state.status === "awaiting_approval" || state.status === "paused" || state.status === "playing"
+        return state.status === "awaiting_approval" ||
+          state.status === "awaiting_ekyc" ||
+          state.status === "paused" ||
+          state.status === "playing"
           ? "working"
           : "done";
       }
@@ -340,6 +411,9 @@ export function useRunPlayer(run: RunDef | null): RunPlayer {
       approved: state.approved,
       hitlDecision: state.hitlDecision,
       hitlReason: state.hitlReason,
+      ekycCancelCount: state.ekycCancelCount,
+      ekycConfirmed: state.ekycConfirmed,
+      ekycFailed: state.ekycFailed,
       nodeStatus,
       play,
       pause,
@@ -347,7 +421,9 @@ export function useRunPlayer(run: RunDef | null): RunPlayer {
       reset,
       approve,
       reject,
+      ekycConfirm,
+      ekycCancel,
     }),
-    [state, current, steps, nodeStatus, play, pause, step, reset, approve, reject],
+    [state, current, steps, nodeStatus, play, pause, step, reset, approve, reject, ekycConfirm, ekycCancel],
   );
 }

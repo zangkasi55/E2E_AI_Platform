@@ -654,8 +654,18 @@ class MemoOrchestrator:
         )
 
         # --- Step 5: HITL pause --------------------------------------------
+        # The human-in-the-loop gate lives in the agent workflow: the
+        # declarative ``Question`` node ('human_approval') in
+        # credit_memo_workflow.yaml owns the pause when the Foundry workflow
+        # engine is active. In that mode Python does NOT run an independent
+        # approval gate — the workflow paused itself server-side at the node
+        # (wf_handle.awaiting_input) and we only record AWAITING_APPROVAL so
+        # the UI can deliver the reviewer's answer back to that node (see
+        # approve()). In offline/mock mode the Python hitl_gateway is the HITL
+        # transport so the demo and tests run without the workflow engine.
         step += 1
         pending = hitl_gateway.pause_for_approval(run.run_id, draft)
+        hitl_owner = "agent_workflow_question_node" if wf_handle else "python_hitl_gateway"
         if wf_handle:
             # Persist the workflow resume handle so approve() can route the
             # reviewer's decision back into the workflow's HITL Question node.
@@ -668,12 +678,20 @@ class MemoOrchestrator:
             "hitl_pause",
             out={
                 "status": "awaiting_approval",
-                "channel": "teams",
+                "hitl_owner": hitl_owner,
+                "hitl_node": "human_approval" if wf_handle else None,
+                "workflow": (wf_handle or {}).get("workflow") if wf_handle else None,
+                "channel": "agent_workflow" if wf_handle else "teams",
                 "approval_guidance": approval_guidance,
             },
             note=(
-                "Human approval required. "
-                f"Recommendation={approval_guidance['recommendation']} based on step verifications."
+                (
+                    "Paused at the agent workflow HITL Question node 'human_approval' "
+                    "(workflow owns the human-in-the-loop gate). "
+                    if wf_handle
+                    else "Human approval required. "
+                )
+                + f"Recommendation={approval_guidance['recommendation']} based on step verifications."
             ),
         )
         audit_store.save_run(run)
@@ -694,10 +712,13 @@ class MemoOrchestrator:
         run.approval = decision
         step = len(run.steps)
 
-        # If this run was orchestrated by the Foundry workflow agent, route the
-        # reviewer's decision back into the workflow's HITL Question node so the
-        # declarative graph can finalize server-side. This is best-effort: the
-        # deterministic policy gates below remain the source of truth.
+        # When the Foundry workflow engine is active the HITL gate is the
+        # workflow's ``Question`` node, so the reviewer's answer is delivered
+        # TO that node and the declarative graph finalizes server-side. The
+        # Python /approve endpoint is the transport the UI uses to reach the
+        # node (the PoC has no separate Teams channel). The deterministic
+        # *policy* reject-gate below is a separate governance guard (not HITL):
+        # it prevents a human from force-approving a hard-reject case.
         if wf_handle:
             answer = "approve" if decision.approved else "reject"
             wf_res = resume_workflow(
@@ -713,11 +734,16 @@ class MemoOrchestrator:
                 "resume_workflow",
                 out={
                     "engine": "foundry_workflow",
+                    "hitl_owner": "agent_workflow_question_node",
+                    "hitl_node": "human_approval",
                     "decision": answer,
                     "status": wf_res.status,
                     "mocked": wf_res.mocked,
                 },
-                note="Reviewer decision routed to the Foundry workflow HITL node.",
+                note=(
+                    "Reviewer decision delivered to the agent workflow HITL Question "
+                    "node 'human_approval'; the workflow drives finalization server-side."
+                ),
             )
             step = len(run.steps)
 

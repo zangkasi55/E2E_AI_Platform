@@ -1,7 +1,8 @@
 """Per-agent governance bindings — the nine-pillar platform wiring.
 
 Every agent in the topology (UC1 ``memo_orchestrator`` + four sub-agents, and
-UC2 ``banking_controller``) is explicitly bound to **all nine** platform
+UC2 ``banking_controller`` + its ``ekyc_agent`` / ``bank_query`` /
+``judgement_agent`` sub-agents) is explicitly bound to **all nine** platform
 governance / observability pillars so the wiring is auditable per-agent rather
 than only at the platform level:
 
@@ -59,6 +60,14 @@ class AgentGovernance:
     dspm_sensitivity: str
     # Guardrail — the content-safety / policy controls enforced for this agent
     guardrail_controls: tuple[str, ...]
+    # When True this agent is deployed as a Foundry HOSTED AGENT (its own
+    # containerized endpoint registered in the AI Foundry project) rather than
+    # an in-process sub-agent of the orchestrator. Flips the ai_foundry +
+    # agent_workflow pillars to report hosted registration.
+    is_hosted_agent: bool = False
+    # For a hosted multi-agent workflow: the reasoning agents that are each
+    # REGISTERED as their own Foundry PromptAgent and connected by the workflow.
+    sub_agents: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         """Render the binding, resolving live config (identity, endpoints)."""
@@ -141,9 +150,27 @@ class AgentGovernance:
                     settings.azure_openai_deployment_gpt4o_mini,
                 ],
                 "guardrail_policy": settings.foundry_guardrail_policy_name,
-                "mode": "foundry-agent"
-                if (settings.use_foundry_agents and settings.foundry_agent_ids.get(self.agent))
-                else "model-direct",
+                # Hosted agents are registered as their own Foundry endpoint
+                # (definition.kind = "hosted"); in-process agents run model-
+                # direct or as a provisioned Foundry workflow agent.
+                "hosted": self.is_hosted_agent,
+                "registration": "foundry-hosted-agent" if self.is_hosted_agent else "",
+                # The reasoning agents registered as their own Foundry
+                # PromptAgents (visible individually in the Agents blade).
+                "sub_agents": list(self.sub_agents),
+                "registered_agent_count": len(self.sub_agents),
+                "mode": (
+                    "foundry-hosted-agent"
+                    if self.is_hosted_agent
+                    else (
+                        "foundry-agent"
+                        if (
+                            settings.use_foundry_agents
+                            and settings.foundry_agent_ids.get(self.agent)
+                        )
+                        else "model-direct"
+                    )
+                ),
             },
             # ---- Agent workflow — orchestration topology membership ---------
             "agent_workflow": {
@@ -152,8 +179,16 @@ class AgentGovernance:
                 "role": self.entra_app_role,
                 "orchestrated": True,
                 "foundry_workflow_agents": settings.use_foundry_agents,
-                "note": "Agent participates in the orchestrated agent graph "
-                "(Semantic Kernel orchestrator / Foundry workflow agents).",
+                "hosted_agent": self.is_hosted_agent,
+                "connected_agents": list(self.sub_agents),
+                "note": (
+                    "Hosted multi-agent workflow: the four reasoning agents are "
+                    "each registered as their own Foundry PromptAgent and "
+                    "connected by the workflow over the Responses protocol."
+                    if self.is_hosted_agent
+                    else "Agent participates in the orchestrated agent graph "
+                    "(Semantic Kernel orchestrator / Foundry workflow agents)."
+                ),
             },
             # ---- Application Insights — per-agent token + span telemetry -----
             "app_insights": {
@@ -274,6 +309,83 @@ AGENT_GOVERNANCE: dict[str, AgentGovernance] = {
             "Policy-override / OTP-bypass detection",
             "Harmful content filter",
             "No-money-movement enforcement",
+        ),
+    ),
+    # EKYC identity-confirmation agent — handles the customer's account-holder
+    # confirmation (Sensitive-PII). Least-privilege role: verifier.ekyc.
+    "ekyc_agent": AgentGovernance(
+        agent="ekyc_agent",
+        use_case=_BANKING,
+        entra_app_role="verifier.ekyc",
+        purview_collection=settings.purview_collection,
+        data_classifications=("PII", "Sensitive-PII"),
+        dspm_sensitivity="high",
+        guardrail_controls=(
+            "Prompt Shields (jailbreak)",
+            "Identity-spoofing / EKYC-bypass detection",
+            "PII redaction",
+        ),
+    ),
+    # Bank-query agent — read-only account snapshot (balance/status). Least-
+    # privilege role: reader.account.
+    "bank_query": AgentGovernance(
+        agent="bank_query",
+        use_case=_BANKING,
+        entra_app_role="reader.account",
+        purview_collection=settings.purview_collection,
+        data_classifications=("PII", "Account", "Financial"),
+        dspm_sensitivity="high",
+        guardrail_controls=(
+            "Prompt Shields (jailbreak)",
+            "PII redaction",
+            "Read-only enforcement",
+        ),
+    ),
+    # Judgement agent — deterministic transfer-limit decision. Least-privilege
+    # role: judge.transfer. Never moves money.
+    "judgement_agent": AgentGovernance(
+        agent="judgement_agent",
+        use_case=_BANKING,
+        entra_app_role="judge.transfer",
+        purview_collection=settings.purview_collection,
+        data_classifications=("Account", "Financial"),
+        dspm_sensitivity="high",
+        guardrail_controls=(
+            "Prompt Shields (jailbreak)",
+            "Policy-override / limit-bypass detection",
+            "No-money-movement enforcement",
+        ),
+    ),
+    # UC2 as a Foundry HOSTED AGENT — the whole banking-control graph packaged
+    # and deployed as a containerized hosted agent
+    # (backend/hosted_agents/banking-control). It binds to ALL nine pillars in
+    # its own right: its own Entra workload identity, Purview classifications,
+    # the new DSPM posture, Foundry content-safety guardrails + the
+    # deterministic over-limit HITL escalation, APIM tool boundary, hosted
+    # registration in the AI Foundry project, agent-workflow membership, and
+    # Application Insights / Foundry Observability gen_ai tracing.
+    "banking_control_hosted": AgentGovernance(
+        agent="banking_control_hosted",
+        use_case=_BANKING,
+        entra_app_role="controller.banking",
+        purview_collection=settings.purview_collection,
+        data_classifications=("PII", "Sensitive-PII", "Account", "Financial"),
+        dspm_sensitivity="high",
+        guardrail_controls=(
+            "Prompt Shields (jailbreak)",
+            "Policy-override / OTP-bypass detection",
+            "Over-limit human-approval escalation (HITL)",
+            "No-money-movement enforcement",
+            "Harmful content filter",
+        ),
+        is_hosted_agent=True,
+        # The four reasoning agents, each registered as its own Foundry
+        # PromptAgent and connected by the hosted workflow.
+        sub_agents=(
+            "scbx-banking-ekyc",
+            "scbx-banking-bank-query",
+            "scbx-banking-controller",
+            "scbx-banking-judgement",
         ),
     ),
 }

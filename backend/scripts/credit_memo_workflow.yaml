@@ -1,7 +1,13 @@
 #
 # SCBX UC1 - SME Credit Memo Drafting
-# Sequential multi-agent orchestration: plan -> retrieve -> analyze -> bureau -> assemble.
-# Human approval is required before any memo is finalized (enforced by memo-orchestrator).
+# Multi-agent orchestration: plan -> retrieve -> (analyze | bureau, concurrent)
+# -> assemble -> human approval -> branch (approve = finalize / else = decline).
+# Human-in-the-loop is OWNED BY THIS WORKFLOW: the 'human_approval' Question
+# node below is the HITL gate. The workflow pauses there before 'finalize_memo'
+# and only continues once a reviewer answers it. The Python orchestrator does
+# not run its own approval gate in workflow mode - it just delivers the
+# reviewer's answer to this node (a separate deterministic policy gate still
+# blocks force-approval of hard-reject cases as a governance guard).
 #
 # This is a Microsoft Agent Framework declarative workflow (CSDL YAML). It is
 # registered as a Foundry workflow agent (definition.kind = "workflow") via
@@ -24,18 +30,27 @@ trigger:
       conversationId: =System.ConversationId
       agent:
         name: doc-retrieval
-    - kind: InvokeAzureAgent
-      id: analyze_ratios
-      displayName: Interpret financial ratios
-      conversationId: =System.ConversationId
-      agent:
-        name: financial-ratio
-    - kind: InvokeAzureAgent
-      id: summarize_bureau
-      displayName: Summarize credit bureau
-      conversationId: =System.ConversationId
-      agent:
-        name: bureau-summary
+    # --- Concurrent analysis (fan-out / fan-in) ------------------------------
+    # financial-ratio and bureau-summary are independent analyses that both feed
+    # the memo. They run in the SAME step (concurrently) inside this Parallel
+    # action, then the workflow joins (fan-in) and passes both results to
+    # memo-assembler.
+    - kind: Parallel
+      id: analyze_parallel
+      displayName: Analyze financials and bureau (concurrent)
+      actions:
+        - kind: InvokeAzureAgent
+          id: analyze_ratios
+          displayName: Interpret financial ratios
+          conversationId: =System.ConversationId
+          agent:
+            name: financial-ratio
+        - kind: InvokeAzureAgent
+          id: summarize_bureau
+          displayName: Summarize credit bureau
+          conversationId: =System.ConversationId
+          agent:
+            name: bureau-summary
     - kind: InvokeAzureAgent
       id: assemble_memo
       displayName: Assemble draft memo
@@ -43,26 +58,40 @@ trigger:
       agent:
         name: memo-assembler
     # --- Human-in-the-loop approval gate -------------------------------------
-    # No memo is finalized without a human decision. This action PAUSES the
-    # workflow and waits for the reviewer's approve / reject response (delivered
-    # via the configured channel, e.g. Teams). It mirrors the Durable Functions
-    # 'wait_for_external_event' + Service Bus 'hitl-approvals' pause that the
-    # Python memo-orchestrator enforces at runtime.
+    # No memo is finalized without a human decision. This Question action PAUSES
+    # the workflow and waits for the reviewer's approve / reject response, which
+    # is stored in the Local.ReviewerDecision property. It mirrors the Durable
+    # Functions 'wait_for_external_event' + Service Bus 'hitl-approvals' pause.
     - kind: Question
       id: human_approval
       displayName: Human approval (HITL)
-      conversationId: =System.ConversationId
-      variable: =Topic.ReviewerDecision
-      prompt: >-
-        Review the assembled draft credit memo and the policy-gate
-        recommendation. Reply "approve" to finalize the memo, or "reject" to
-        decline it. No memo is finalized without your decision.
-    # --- Finalize only after the human decision ------------------------------
-    - kind: InvokeAzureAgent
-      id: finalize_memo
-      displayName: Finalize or decline per human decision
-      conversationId: =System.ConversationId
-      agent:
-        name: memo-orchestrator
-      input:
-        reviewer_decision: =Topic.ReviewerDecision
+      alwaysPrompt: false
+      autoSend: false
+      property: Local.ReviewerDecision
+      prompt: "Review the assembled draft credit memo and the policy-gate recommendation. Reply approve to finalize the memo, or reject to decline it. No memo is finalized without your decision."
+      entity:
+        kind: StringPrebuiltEntity
+    # --- Branch on the human decision (best practice) ------------------------
+    # The reviewer's answer is in Local.ReviewerDecision. We DO NOT finalize
+    # unconditionally - we branch: approve -> finalize the memo; anything else
+    # (reject / no-match) -> the decline path. First-match-wins semantics.
+    - kind: ConditionGroup
+      id: decision_branch
+      displayName: Route on reviewer decision
+      conditions:
+        - id: reviewer_approved
+          condition: =Local.ReviewerDecision = "approve"
+          actions:
+            - kind: InvokeAzureAgent
+              id: finalize_memo
+              displayName: Finalize approved memo
+              conversationId: =System.ConversationId
+              agent:
+                name: memo-orchestrator
+      elseActions:
+        - kind: InvokeAzureAgent
+          id: decline_memo
+          displayName: Decline memo per reviewer
+          conversationId: =System.ConversationId
+          agent:
+            name: memo-orchestrator

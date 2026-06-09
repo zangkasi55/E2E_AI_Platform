@@ -27,6 +27,7 @@ export type RunStatus =
   | "playing"
   | "paused"
   | "awaiting_approval"
+  | "awaiting_ekyc"
   | "done"
   | "blocked";
 
@@ -79,6 +80,9 @@ export interface Step {
   // UC2
   stage?: string;
   zone?: "prob" | "det";
+  // Identity-confirmation (EKYC) gate: the run pauses for the customer to
+  // Confirm or Cancel before any account tool runs.
+  ekyc?: boolean;
   // shared
   tool?: ToolName | null;
   apim?: boolean;

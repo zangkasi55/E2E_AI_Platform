@@ -1,0 +1,41 @@
+name: banking-control-hosted
+description: >
+  SCBX UC2 Conversational Banking Control as a Foundry hosted agent. Runs the
+  EKYC -> bank-query -> banking-controller -> judgement reasoning flow with a
+  deterministic over-limit human-approval (HITL) gate before any transaction
+  handoff. No agent moves money; the only terminal action is an auditable handoff.
+metadata:
+  tags:
+    - SCBX
+    - UC2
+    - Conversational Banking
+    - Agent Framework
+    - Human-in-the-loop
+    - Responses Protocol
+template:
+  name: banking-control-hosted
+  kind: hosted
+  protocols:
+    - protocol: responses
+      version: 1.0.0
+  environment_variables:
+    - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+      value: "{{AZURE_AI_MODEL_DEPLOYMENT_NAME}}"
+    - name: BANK_TRANSFER_LIMIT_THB
+      value: "{{BANK_TRANSFER_LIMIT_THB}}"
+    - name: AZURE_CLIENT_ID
+      value: "{{AZURE_CLIENT_ID}}"
+    - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+      value: "{{APPLICATIONINSIGHTS_CONNECTION_STRING}}"
+    - name: OTEL_ENABLE_SENSITIVE_DATA
+      value: "{{OTEL_ENABLE_SENSITIVE_DATA}}"
+    - name: PURVIEW_ACCOUNT_NAME
+      value: "{{PURVIEW_ACCOUNT_NAME}}"
+    - name: GOVERNANCE_POLICY_ID
+      value: "{{GOVERNANCE_POLICY_ID}}"
+    - name: FOUNDRY_REGISTER_AGENTS
+      value: "{{FOUNDRY_REGISTER_AGENTS}}"
+resources:
+  - kind: model
+    id: gpt-4o
+    name: AZURE_AI_MODEL_DEPLOYMENT_NAME

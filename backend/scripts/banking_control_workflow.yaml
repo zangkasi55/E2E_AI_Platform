@@ -1,8 +1,14 @@
 #
 # SCBX UC2 - Conversational Banking Control
-# Single-agent conversational orchestration. The banking-controller decomposes a
-# banking request into intents and slots; it never moves money - the only
-# terminal action is a transaction handoff that requires downstream approval.
+# Multi-agent conversational orchestration that keeps probabilistic reasoning and
+# deterministic control separate. EKYC confirms the customer, the bank-query agent
+# reads account state, the banking-controller decomposes intents and slots, and the
+# judgement agent decides the transfer against the bank transfer-limit policy. When
+# a transfer EXCEEDS the per-transaction limit, the workflow PAUSES at the
+# 'human_approval' Question gate and routes the decision to an authorized banker
+# (human-in-the-loop) before any transaction handoff is released. No agent moves
+# money - the only terminal action is a transaction handoff that requires
+# downstream confirmation and step-up authentication.
 #
 # This is a Microsoft Agent Framework declarative workflow (CSDL YAML). It is
 # registered as a Foundry workflow agent (definition.kind = "workflow") via
@@ -13,9 +19,106 @@ trigger:
   kind: OnConversationStart
   id: banking_control_workflow
   actions:
+    # --- EKYC confirmation LOOP (bounded retry) ------------------------------
+    # A real declarative cycle: initialize an attempt counter, run the EKYC
+    # agent, ask the customer to confirm, and - if they do NOT confirm and
+    # attempts remain - loop back to the EKYC agent via GotoAction. The loop is
+    # bounded by Local.EkycAttempts (< 2 -> up to 3 passes) so it can never spin
+    # forever. No account is read and no transfer is judged until identity is
+    # confirmed; this only re-prompts the unconfirmed customer.
+    - kind: SetVariable
+      id: init_ekyc_attempts
+      displayName: Initialize EKYC attempt counter
+      variable: Local.EkycAttempts
+      value: 0
+    - kind: InvokeAzureAgent
+      id: verify_identity
+      displayName: Confirm customer identity (EKYC)
+      conversationId: =System.ConversationId
+      agent:
+        name: ekyc-agent
+    - kind: Question
+      id: ekyc_confirm
+      displayName: Customer identity confirmation
+      alwaysPrompt: true
+      autoSend: false
+      property: Local.IdentityConfirmed
+      prompt: "Please confirm you are the named account holder to continue. Reply yes to confirm your identity, or no if you cannot."
+      entity:
+        kind: StringPrebuiltEntity
+    - kind: ConditionGroup
+      id: ekyc_loop_check
+      displayName: Retry EKYC if not confirmed (loop)
+      conditions:
+        - id: ekyc_not_confirmed
+          condition: =And(Local.IdentityConfirmed <> "yes", Local.EkycAttempts < 2)
+          actions:
+            - kind: SetVariable
+              id: increment_ekyc_attempts
+              displayName: Increment EKYC attempt counter
+              variable: Local.EkycAttempts
+              value: =Local.EkycAttempts + 1
+            - kind: GotoAction
+              id: loop_back_to_ekyc
+              displayName: Loop back to EKYC confirmation
+              actionId: verify_identity
+    - kind: InvokeAzureAgent
+      id: query_account
+      displayName: Read account state
+      conversationId: =System.ConversationId
+      agent:
+        name: bank-query
     - kind: InvokeAzureAgent
       id: control_request
       displayName: Decompose and control banking request
       conversationId: =System.ConversationId
       agent:
         name: banking-controller
+    - kind: InvokeAzureAgent
+      id: judge_transfer
+      displayName: Judge transfer (EKYC + balance + policy)
+      conversationId: =System.ConversationId
+      agent:
+        name: judgement-agent
+    # --- Over-limit human-approval gate (HITL) -------------------------------
+    # When the judgement agent finds the transfer EXCEEDS the per-transaction
+    # limit (policy SCBX-RETAIL-XFER-001), the transfer cannot proceed on the
+    # agent's authority. This Question action PAUSES the workflow and routes the
+    # decision to an authorized banker (human-in-the-loop). It mirrors the
+    # Durable Functions 'wait_for_external_event' + Service Bus 'hitl-approvals'
+    # pause. Within-limit transfers are permitted by policy and the judgement
+    # agent answers this gate as 'approve' itself - no human pause needed.
+    - kind: Question
+      id: human_approval
+      displayName: Over-limit human approval (HITL)
+      alwaysPrompt: false
+      autoSend: false
+      property: Local.BankerDecision
+      prompt: "This transfer exceeds the per-transaction transfer limit (policy SCBX-RETAIL-XFER-001), so it requires an authorized banker's decision. Reply approve to release the transaction handoff for downstream step-up confirmation, or reject to decline the transfer. The agent must NOT approve its own over-limit transfer."
+      entity:
+        kind: StringPrebuiltEntity
+    # --- Branch on the banker's decision (best practice) ---------------------
+    # The banker's answer is in Local.BankerDecision. We DO NOT release the
+    # handoff unconditionally - approve -> release the auditable transaction
+    # handoff; anything else (reject / no-match) -> decline. The handoff still
+    # requires downstream confirmation and step-up auth; no agent moves money.
+    - kind: ConditionGroup
+      id: approval_branch
+      displayName: Route on banker decision
+      conditions:
+        - id: banker_approved
+          condition: =Local.BankerDecision = "approve"
+          actions:
+            - kind: InvokeAzureAgent
+              id: release_handoff
+              displayName: Release approved transaction handoff
+              conversationId: =System.ConversationId
+              agent:
+                name: banking-controller
+      elseActions:
+        - kind: InvokeAzureAgent
+          id: decline_transfer
+          displayName: Decline transfer per banker
+          conversationId: =System.ConversationId
+          agent:
+            name: banking-controller

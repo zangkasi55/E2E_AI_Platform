@@ -31,9 +31,16 @@ export const INITIAL_BALANCES: Record<string, number> = {
   "USR-003": 9750.5,
 };
 
+// Per-transaction transfer limit (THB). Mirrors the deterministic bank policy
+// (data/banking/policy.json · SCBX-RETAIL-XFER-001) enforced by the judgement
+// agent before any handoff. Any single transfer above this is declined.
+export const BANK_TRANSFER_LIMIT_THB = 1500;
+export const BANK_CURRENCY = "THB";
+
 export type TransferOutcome =
-  | "permit" // condition met + sufficient funds + policy permit
+  | "permit" // condition met + sufficient funds + within limit + policy permit
   | "deny_insufficient" // funds < amount
+  | "escalate_approval" // amount > per-txn limit → routed to human approval (HITL)
   | "condition_failed" // balance not above threshold
   | "blocked" // unsafe instruction → guardrail block
   | "invalid"; // could not parse a transfer (e.g. balance-only query)
@@ -47,6 +54,7 @@ export interface TransferPlan {
   senderBalance: number;
   conditionMet: boolean;
   sufficientFunds: boolean;
+  exceedsLimit: boolean;
   outcome: TransferOutcome;
   handoffId: string;
 }
@@ -60,7 +68,7 @@ export function accountByUserId(userId: string): BankAccount | undefined {
 }
 
 const DEFAULT_BANKING_MESSAGE =
-  "From user1: check my balance. If I have more than 5,000 baht, transfer 2,000 baht to user2.";
+  "From user1: check my balance. If I have more than 5,000 baht, transfer 1,200 baht to user2.";
 
 export function defaultBankingMessage(): string {
   return DEFAULT_BANKING_MESSAGE;
@@ -120,6 +128,9 @@ interface BuildOptions {
   fromUserId: string;
   unsafe: boolean;
   balances: Record<string, number>;
+  // Per-transaction transfer limit gate (THB). Defaults to the bank policy
+  // value but can be overridden from the UI to demo the gate interactively.
+  transferLimit?: number;
 }
 
 interface BuildResult {
@@ -131,7 +142,8 @@ interface BuildResult {
  * Parse the customer prompt and synthesise an ordered Step[] that reflects it.
  * A fresh run_id is produced every call so useRunPlayer reloads on each Send.
  */
-export function buildBankingRun({ message, fromUserId, unsafe, balances }: BuildOptions): BuildResult {
+export function buildBankingRun({ message, fromUserId, unsafe, balances, transferLimit }: BuildOptions): BuildResult {
+  const limit = transferLimit ?? BANK_TRANSFER_LIMIT_THB;
   runSeq += 1;
   const runId = `run-uc2-${Date.now().toString(36)}-${runSeq}`;
   const handoffId = `HO-${4000 + runSeq}`;
@@ -169,12 +181,14 @@ export function buildBankingRun({ message, fromUserId, unsafe, balances }: Build
   const senderBalance = balances[sender.user_id] ?? 0;
   const conditionMet = threshold == null ? true : senderBalance > threshold;
   const sufficientFunds = amount != null && amount <= senderBalance;
+  const exceedsLimit = amount != null && amount > limit;
 
   let outcome: TransferOutcome;
   if (unsafe) outcome = "blocked";
   else if (amount == null || (!recipient && !recipientName)) outcome = "invalid";
   else if (!conditionMet) outcome = "condition_failed";
   else if (!sufficientFunds) outcome = "deny_insufficient";
+  else if (exceedsLimit) outcome = "escalate_approval";
   else outcome = "permit";
 
   const recipientLabel = recipient ? `${recipient.display_name} (${recipient.alias})` : recipientName ?? "—";
@@ -188,13 +202,14 @@ export function buildBankingRun({ message, fromUserId, unsafe, balances }: Build
     senderBalance,
     conditionMet,
     sufficientFunds,
+    exceedsLimit,
     outcome,
     handoffId,
   };
 
   const steps = outcome === "blocked"
     ? buildBlockedSteps(message)
-    : buildFlowSteps(plan, recipientLabel);
+    : buildFlowSteps(plan, recipientLabel, limit);
 
   return {
     run: { run_id: runId, use_case: "banking", message, steps },
@@ -226,8 +241,8 @@ function buildBlockedSteps(message: string): Step[] {
   ];
 }
 
-function buildFlowSteps(plan: TransferPlan, recipientLabel: string): Step[] {
-  const { sender, recipient, amount, threshold, senderBalance, conditionMet, sufficientFunds, outcome, handoffId } = plan;
+function buildFlowSteps(plan: TransferPlan, recipientLabel: string, limit: number = BANK_TRANSFER_LIMIT_THB): Step[] {
+  const { sender, recipient, amount, threshold, senderBalance, conditionMet, sufficientFunds, exceedsLimit, outcome, handoffId } = plan;
   const amt = amount ?? 0;
 
   const steps: Step[] = [
@@ -276,7 +291,7 @@ function buildFlowSteps(plan: TransferPlan, recipientLabel: string): Step[] {
   }
 
   if (outcome === "invalid" || outcome === "condition_failed") {
-    return steps; // terminal: last step explains why no transfer happened.
+    return withEkyc(steps, sender); // terminal: last step explains why no transfer happened.
   }
 
   const recipientId = recipient?.user_id ?? "P-EXT";
@@ -293,21 +308,50 @@ function buildFlowSteps(plan: TransferPlan, recipientLabel: string): Step[] {
     tokens: null,
   });
 
-  const eligible = sufficientFunds;
+  const escalate = outcome === "escalate_approval";
+  // Within-limit + funded transfers auto-permit. Over-limit transfers are NOT a
+  // hard deny — they are escalated to a human approver (HITL). Only an
+  // insufficient-funds case is a deterministic deny here.
+  const eligible = sufficientFunds && !exceedsLimit;
+  const denyReason = !sufficientFunds
+    ? `funds ${formatTHB(senderBalance)} < amount ${formatTHB(amt)}`
+    : "";
   steps.push({
     step: n++, agent: "banking_controller", stage: "eligibility_check", zone: "det",
     model: null, title: "check_transfer_eligibility + PDP",
     tool: "check_transfer_eligibility", apim: true,
-    params: { user_id: sender.user_id, src_account: sender.account_id, payee_id: recipientId, amount: amt },
+    params: { user_id: sender.user_id, src_account: sender.account_id, payee_id: recipientId, amount: amt, transfer_limit_thb_per_txn: limit },
     detail: "Policy Decision Point applies RBAC + ABAC + transfer policy. Deterministic, not prompt-driven.",
-    result: eligible
-      ? `Eligible=true · within daily limit · policy=permit · step-up auth REQUIRED for execution.`
-      : `Eligible=false · funds ${formatTHB(senderBalance)} < amount ${formatTHB(amt)} · policy=deny · no handoff executed.`,
-    audit: `TOOL check_transfer_eligibility · PDP=${eligible ? "permit" : "deny"} · funds_ok=${eligible} · step_up_required=${eligible}`,
+    result: escalate
+      ? `Eligible=conditional · amount ${formatTHB(amt)} exceeds transfer limit ${formatTHB(limit)} ${BANK_CURRENCY}/txn → routed to HUMAN APPROVAL (HITL). policy=escalate.`
+      : eligible
+        ? `Eligible=true · within transfer limit (≤ ${formatTHB(limit)} ${BANK_CURRENCY}/txn) · policy=permit · step-up auth REQUIRED for execution.`
+        : `Eligible=false · ${denyReason} · policy=deny · no handoff executed.`,
+    audit: escalate
+      ? `TOOL check_transfer_eligibility · PDP=escalate · over_limit=true · amount=${amt} · limit=${formatTHB(limit)} · funds_ok=true · approver=authorized_banker`
+      : `TOOL check_transfer_eligibility · PDP=${eligible ? "permit" : "deny"} · limit=${formatTHB(limit)} · funds_ok=${sufficientFunds} · within_limit=${!exceedsLimit} · step_up_required=${eligible}`,
     tokens: null,
   });
 
-  const policyResult: "permit" | "deny" = eligible ? "permit" : "deny";
+  // Over-limit branch: insert a human-in-the-loop approval gate as a connected
+  // step in the Azure AI Foundry agent workflow. The agent CANNOT self-approve;
+  // Durable Functions parks the run until an authorized banker decides.
+  if (escalate) {
+    steps.push({
+      step: n++, agent: "banking_controller", stage: "human_approval", zone: "det",
+      model: null, title: "human_approval_gate · authorized banker",
+      tool: null, apim: true,
+      params: { amount: amt, limit, currency: BANK_CURRENCY, approver_role: "authorized_banker", workflow: "azure_ai_foundry" },
+      detail: "Azure AI Foundry agent workflow · connected human-approval step. The over-limit transfer is paused; Durable Functions awaits the banker's decision. The agent cannot approve its own action.",
+      result: `AWAITING human approval — over-limit transfer (${formatTHB(amt)} ${BANK_CURRENCY} > ${formatTHB(limit)} ${BANK_CURRENCY}/txn) escalated to an authorized banker.`,
+      audit: `HITL gate · awaiting_approval · over_limit · amount=${amt} · limit=${formatTHB(limit)} · approver=authorized_banker`,
+      tokens: { prompt: 420, completion: 80 },
+      hitl: true,
+      requiresApproval: true,
+    });
+  }
+
+  const policyResult: "permit" | "deny" = eligible || escalate ? "permit" : "deny";
   const handoff: HandoffObject = {
     handoff_id: handoffId,
     intent: "TRANSFER_MONEY",
@@ -317,6 +361,7 @@ function buildFlowSteps(plan: TransferPlan, recipientLabel: string): Step[] {
       payee_id: recipientId,
       payee_name: recipientLabel,
       src_account: sender.account_id,
+      ...(escalate ? { requires_human_approval: true, over_limit: true, transfer_limit_thb_per_txn: limit, approver_role: "authorized_banker" } : {}),
     },
     policy_result: policyResult,
     requires_confirmation: true,
@@ -332,13 +377,40 @@ function buildFlowSteps(plan: TransferPlan, recipientLabel: string): Step[] {
     tool: "request_transaction_handoff", apim: true,
     params: { intent: "TRANSFER_MONEY", slots: handoff.slots, policy_result: policyResult },
     detail: "Terminal action. Produces an auditable handoff object. The agent moves NO money.",
-    result: eligible
-      ? `Handoff created. requires_confirmation=true · requires_step_up_auth=true. No money moved by the agent.`
-      : `Handoff denied by policy. No transfer initiated.`,
-    audit: `TOOL request_transaction_handoff · handoff_id=${handoffId} · policy=${policyResult} · money_moved=false`,
+    result: escalate
+      ? `Handoff created with human-approval requirement. Execution governed by the banker's decision + step-up auth. No money moved by the agent.`
+      : eligible
+        ? `Handoff created. requires_confirmation=true · requires_step_up_auth=true. No money moved by the agent.`
+        : `Handoff denied by policy. No transfer initiated.`,
+    audit: `TOOL request_transaction_handoff · handoff_id=${handoffId} · policy=${policyResult}${escalate ? " · requires_human_approval=true" : ""} · money_moved=false`,
     tokens: { prompt: 880, completion: 260 },
     handoff,
   });
 
-  return steps;
+  return withEkyc(steps, sender);
+}
+
+// Prepend the EKYC identity-confirmation gate as the first step of a banking
+// flow and renumber the whole sequence. The customer must Confirm (or Cancel)
+// before any account tool runs; cancelling more than MAX_EKYC_CANCELS times
+// aborts the run (handled in useRunPlayer). The agent still moves NO money.
+function withEkyc(steps: Step[], sender: BankAccount): Step[] {
+  const ekycStep: Step = {
+    step: 0,
+    agent: "banking_controller",
+    stage: "ekyc",
+    zone: "det",
+    model: null,
+    title: "ekyc_verify · customer identity confirmation",
+    tool: null,
+    apim: true,
+    params: { user_id: sender.user_id, method: "customer_confirmation" },
+    detail:
+      "Identity-confirmation gate (EKYC). Before any account tool runs, the customer must confirm their identity. Choose Confirm to proceed, or Cancel to abort. Cancelling more than twice cancels the process.",
+    result: "AWAITING customer identity confirmation (EKYC). Choose Confirm to proceed, or Cancel.",
+    audit: `EKYC gate · awaiting_confirmation · user=${sender.user_id} · method=customer_confirmation`,
+    tokens: null,
+    ekyc: true,
+  };
+  return [ekycStep, ...steps].map((s, i) => ({ ...s, step: i + 1 }));
 }

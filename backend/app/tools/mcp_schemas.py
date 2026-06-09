@@ -165,6 +165,27 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         },
     },
     # ---- UC2: Conversational Banking --------------------------------------
+    "confirm_identity": {
+        "name": "confirm_identity",
+        "description": (
+            "EKYC step. Ask the customer to confirm they are the account holder and "
+            "record the confirmation. Identity must be confirmed before any account "
+            "action or transfer handoff."
+        ),
+        "use_case": "banking",
+        "x-scope": "tools.ekyc.verify",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "string", "description": "User id, e.g. USR-001."},
+                "identity_confirmed": {
+                    "type": "boolean",
+                    "description": "True when the customer has explicitly confirmed they are the account holder.",
+                },
+            },
+            "required": ["user_id", "identity_confirmed"],
+        },
+    },
     "get_balance": {
         "name": "get_balance",
         "description": "Read the balance of a user's account (THB).",
@@ -175,6 +196,23 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
             "properties": {
                 "user_id": {"type": "string", "description": "User id, e.g. USR-001."},
                 "account_id": {"type": "string", "description": "Account id, e.g. ACC-001-CUR."},
+            },
+            "required": ["user_id", "account_id"],
+        },
+    },
+    "query_bank_account": {
+        "name": "query_bank_account",
+        "description": (
+            "Bank-query step. Read a customer's account snapshot (balance, currency, "
+            "status) for downstream judgement. Read-only; moves no money."
+        ),
+        "use_case": "banking",
+        "x-scope": "tools.account.query",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "string"},
+                "account_id": {"type": "string"},
             },
             "required": ["user_id", "account_id"],
         },
@@ -207,6 +245,30 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
                 "amount": {"type": "number", "description": "Amount in THB."},
             },
             "required": ["user_id", "src_account", "payee_id", "amount"],
+        },
+    },
+    "evaluate_transfer_judgement": {
+        "name": "evaluate_transfer_judgement",
+        "description": (
+            "Judgement step. Deterministically decide whether a transfer may proceed "
+            "to handoff by combining EKYC pass, sufficient remaining balance, and the "
+            "bank transfer-limit policy. Does NOT move money."
+        ),
+        "use_case": "banking",
+        "x-scope": "tools.judgement.evaluate",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "string"},
+                "src_account": {"type": "string"},
+                "payee_id": {"type": "string"},
+                "amount": {"type": "number", "description": "Amount in THB."},
+                "ekyc_passed": {
+                    "type": "boolean",
+                    "description": "Whether the EKYC identity confirmation passed.",
+                },
+            },
+            "required": ["user_id", "src_account", "payee_id", "amount", "ekyc_passed"],
         },
     },
     "request_transaction_handoff": {

@@ -156,6 +156,24 @@ class BankingMessage(BaseModel):
     user_id: str = Field(..., examples=["USR-001"])
     src_account: Optional[str] = Field(None, examples=["ACC-001-CUR"])
     message: str = Field(..., examples=["Check my balance; if over 5000 transfer 2000 to mom"])
+    # EKYC: the customer's confirmation that they are the account holder. The
+    # controller requires this before any account action or transfer handoff.
+    identity_confirmed: Optional[bool] = Field(
+        None,
+        description="True when the customer has confirmed they are the account holder (EKYC).",
+    )
+    # EKYC confirm/cancel loop: the customer is asked to Confirm or Cancel. A
+    # cancel re-prompts (loop); more than two cancels aborts the flow as
+    # EKYC_FAILED. ``ekyc_cancel_count`` carries how many cancels happened so far.
+    ekyc_decision: Optional[Literal["confirm", "cancel"]] = Field(
+        None,
+        description="Customer's EKYC choice this turn: 'confirm' or 'cancel'.",
+    )
+    ekyc_cancel_count: int = Field(
+        0,
+        ge=0,
+        description="How many times the customer has already cancelled EKYC in this flow.",
+    )
 
 
 class Slots(BaseModel):
@@ -203,11 +221,38 @@ class BankingResponse(BaseModel):
 
     run_id: str
     outcome: Literal[
-        "HANDOFF_CREATED", "CONDITION_NOT_MET", "REFUSED", "INFO"
+        "HANDOFF_CREATED",
+        "CONDITION_NOT_MET",
+        "REFUSED",
+        "INFO",
+        "EKYC_REQUIRED",
+        "EKYC_FAILED",
+        "POLICY_DECLINED",
     ]
     message: str
     handoff: Optional[HandoffObject] = None
+    ekyc: Optional[dict] = None
+    # EKYC confirm/cancel loop bookkeeping echoed back to the client so the UI
+    # can show "attempt N of 3" and resend the running cancel count.
+    ekyc_cancel_count: int = 0
+    judgement: Optional[dict] = None
     steps: list[StepTrace] = Field(default_factory=list)
+
+
+class BankPolicy(BaseModel):
+    """Adjustable bank transfer-limit policy (UC2)."""
+
+    policy_id: Optional[str] = None
+    name: Optional[str] = None
+    currency: str = "THB"
+    transfer_limit_thb_per_txn: float = Field(..., gt=0)
+    ekyc_required_for_transfer: bool = True
+
+
+class BankPolicyUpdate(BaseModel):
+    """Payload to adjust the per-transaction transfer limit."""
+
+    transfer_limit_thb_per_txn: float = Field(..., gt=0, examples=[1500.0])
 
 
 # ---------------------------------------------------------------------------

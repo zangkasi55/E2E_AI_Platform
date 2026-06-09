@@ -1,0 +1,9 @@
+{
+  "policy_id": "SCBX-RETAIL-XFER-001",
+  "name": "SCBX retail transfer policy",
+  "description": "Sample SCBX retail conversational-banking transfer policy. Enforced deterministically by the judgement agent before any transaction handoff. A per-transaction transfer limit caps each transfer, and EKYC identity confirmation is mandatory before any account action.",
+  "currency": "THB",
+  "transfer_limit_thb_per_txn": 1500.0,
+  "ekyc_required_for_transfer": true,
+  "updated_at": "2026-06-01T00:00:00Z"
+}

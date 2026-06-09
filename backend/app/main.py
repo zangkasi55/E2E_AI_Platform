@@ -23,6 +23,7 @@ from .models import (
     ApprovalDecision,
     BankingMessage,
     BankingResponse,
+    BankPolicyUpdate,
     RunRequest,
     RunState,
     TokenSummary,
@@ -33,6 +34,7 @@ from .telemetry.audit import audit_store
 from .telemetry.otel import configure_telemetry
 from .telemetry.purview_audit import recent_events
 from .telemetry.tokens import token_meter
+from .tools import registry
 
 app = FastAPI(
     title="Agentic AI Platform PoC — Orchestrator",
@@ -143,6 +145,21 @@ def banking_message(msg: BankingMessage) -> BankingResponse:
     """Process a conversational-banking turn. NEVER moves money — at most emits
     an auditable transaction handoff."""
     return banking_controller.handle(msg)
+
+
+@app.get("/api/banking/policy", tags=["banking"])
+def get_banking_policy() -> dict:
+    """Return the active bank transfer-limit policy (UC2)."""
+    return registry.get_bank_policy()
+
+
+@app.put("/api/banking/policy", tags=["banking"])
+def update_banking_policy(body: BankPolicyUpdate) -> dict:
+    """Adjust the per-transaction transfer limit (deterministic policy control)."""
+    try:
+        return registry.set_bank_policy(body.transfer_limit_thb_per_txn)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 # ===========================================================================

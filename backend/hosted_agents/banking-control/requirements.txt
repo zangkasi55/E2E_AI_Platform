@@ -1,0 +1,7 @@
+agent-framework>=1.2.2
+agent-framework-foundry
+agent-framework-foundry-hosting
+azure-ai-projects
+azure-identity
+azure-monitor-opentelemetry-exporter
+python-dotenv

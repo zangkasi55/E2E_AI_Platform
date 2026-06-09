@@ -97,6 +97,13 @@ class Settings(BaseSettings):
     entra_orchestrator_client_id: str = os.getenv("ENTRA_ORCHESTRATOR_CLIENT_ID", os.getenv("AZURE_CLIENT_ID", ""))
     entra_tool_bridge_client_id: str = ""
     entra_ui_client_id: str = ""
+    # UC2 banking-control HOSTED agent (backend/hosted_agents/banking-control)
+    # runs under its OWN user-assigned managed identity. Falls back to the
+    # orchestrator/AZURE_CLIENT_ID so the governance binding resolves even
+    # before a dedicated UAMI is provisioned.
+    entra_banking_hosted_client_id: str = os.getenv(
+        "ENTRA_BANKING_HOSTED_CLIENT_ID", os.getenv("AZURE_CLIENT_ID", "")
+    )
 
     # ---- Purview governance ------------------------------------------------
     # Canonical tenant Purview account (pview-isaru66-default-001). The catalog

@@ -55,8 +55,11 @@
     get_bureau_report:          { sig: "(applicant_id)",                          uc: "UC1" },
     render_memo:                { sig: "(sections, template_id)",                 uc: "UC1" },
     get_balance:                { sig: "(user_id, account_id)",                   uc: "UC2" },
+    confirm_identity:           { sig: "(user_id, identity_confirmed)",           uc: "UC2" },
+    query_bank_account:         { sig: "(user_id, account_id)",                   uc: "UC2" },
     resolve_payee:              { sig: "(user_id, payee_alias)",                  uc: "UC2" },
     check_transfer_eligibility: { sig: "(user_id, src_account, payee_id, amount)",uc: "UC2" },
+    evaluate_transfer_judgement:{ sig: "(user_id, src, payee, amount, ekyc)",     uc: "UC2" },
     request_transaction_handoff:{ sig: "(intent, slots, policy_result)",          uc: "UC2" }
   };
 
@@ -70,14 +73,24 @@
   ];
 
   var UC2_STAGES = [
+    { id: "ekyc",                 label: "EKYC confirmation",     zone: "prob" },
     { id: "intent_decomposition", label: "Intent decomposition", zone: "prob" },
     { id: "slot_filling",         label: "Slot filling",         zone: "prob" },
-    { id: "balance_lookup",       label: "Balance lookup",       zone: "det" },
+    { id: "balance_lookup",       label: "Bank query",           zone: "det" },
     { id: "conditional_eval",     label: "Conditional logic",    zone: "prob" },
     { id: "payee_resolution",     label: "Payee resolution",     zone: "det" },
-    { id: "eligibility_check",    label: "Eligibility + PDP",    zone: "det" },
+    { id: "eligibility_check",    label: "Judgement + policy",   zone: "det" },
     { id: "handoff",              label: "Transaction handoff",  zone: "det" }
   ];
+
+  /* ---- Adjustable bank transfer-limit policy (mirrors backend) ----------- */
+  var BANK_POLICY = {
+    policy_id: "SCBX-RETAIL-XFER-001",
+    name: "SCBX retail transfer policy",
+    currency: "THB",
+    transfer_limit_thb_per_txn: 1500,
+    ekyc_required_for_transfer: true
+  };
 
   var RUN_UC1 = "run-4f7a-credit-memo";
   var RUN_UC2 = "run-9c2e-banking";
@@ -166,7 +179,17 @@
    * ====================================================================== */
   var UC2_STEPS = [
     {
-      step: 1, agent: "banking_controller", stage: "intent_decomposition", zone: "prob",
+      step: 1, agent: "ekyc_agent", stage: "ekyc", zone: "prob",
+      model: "gpt-4o-mini", title: "Confirm customer identity (EKYC)",
+      tool: "confirm_identity", apim: true,
+      params: { user_id: "U-88231", identity_confirmed: true },
+      detail: "EKYC agent asks the customer to confirm they are the account holder. No account is touched until identity is confirmed.",
+      result: "Customer confirmed identity as 'Ploy Wattana'. ekyc_passed=true · method=customer_confirmation.",
+      audit: "EKYC confirm_identity · via APIM · user=U-88231 · ekyc_passed=true",
+      tokens: { prompt: 620, completion: 130 }
+    },
+    {
+      step: 2, agent: "banking_controller", stage: "intent_decomposition", zone: "prob",
       model: "gpt-4o", title: "Decompose intent",
       tool: null, apim: false,
       detail: "Probabilistic zone: parse the natural-language request into ordered intents.",
@@ -175,7 +198,7 @@
       tokens: { prompt: 980, completion: 220 }
     },
     {
-      step: 2, agent: "banking_controller", stage: "slot_filling", zone: "prob",
+      step: 3, agent: "banking_controller", stage: "slot_filling", zone: "prob",
       model: "gpt-4o-mini", title: "Fill slots",
       tool: null, apim: false,
       detail: "Extract and validate slots; flag any missing required fields for multi-turn clarification.",
@@ -184,17 +207,17 @@
       tokens: { prompt: 760, completion: 160 }
     },
     {
-      step: 3, agent: "banking_controller", stage: "balance_lookup", zone: "det",
-      model: null, title: "get_balance via APIM",
-      tool: "get_balance", apim: true,
+      step: 4, agent: "bank_query", stage: "balance_lookup", zone: "det",
+      model: null, title: "query_bank_account via APIM",
+      tool: "query_bank_account", apim: true,
       params: { user_id: "U-88231", account_id: "xxx-4471" },
-      detail: "Deterministic control zone: APIM enforces tool scope + PDP before the call is allowed.",
-      result: "Balance = 7,450 THB (> 5,000 threshold). Tool-scope ok · policy=permit.",
-      audit: "TOOL get_balance · via APIM · scope=ok · PDP=permit · balance=7450",
+      detail: "Bank-query agent reads the account through APIM, which enforces tool scope + PDP before the call is allowed.",
+      result: "Balance = 7,450 THB (> 5,000 threshold) · account_status=active. Tool-scope ok · policy=permit.",
+      audit: "TOOL query_bank_account · via APIM · scope=ok · PDP=permit · balance=7450",
       tokens: null
     },
     {
-      step: 4, agent: "banking_controller", stage: "conditional_eval", zone: "prob",
+      step: 5, agent: "banking_controller", stage: "conditional_eval", zone: "prob",
       model: "gpt-4o-mini", title: "Evaluate condition",
       tool: null, apim: false,
       detail: "Probabilistic zone evaluates the guard condition against the deterministic balance result.",
@@ -203,7 +226,7 @@
       tokens: { prompt: 540, completion: 90 }
     },
     {
-      step: 5, agent: "banking_controller", stage: "payee_resolution", zone: "det",
+      step: 6, agent: "banking_controller", stage: "payee_resolution", zone: "det",
       model: null, title: "resolve_payee via APIM",
       tool: "resolve_payee", apim: true,
       params: { user_id: "U-88231", payee_alias: "mom" },
@@ -213,17 +236,17 @@
       tokens: null
     },
     {
-      step: 6, agent: "banking_controller", stage: "eligibility_check", zone: "det",
-      model: null, title: "check_transfer_eligibility + PDP",
-      tool: "check_transfer_eligibility", apim: true,
-      params: { user_id: "U-88231", src_account: "xxx-4471", payee_id: "P-1190", amount: 2000 },
-      detail: "Policy Decision Point applies RBAC + ABAC + transfer policy. Deterministic, not prompt-driven.",
-      result: "Eligible=true · within daily limit · policy=permit · step-up auth REQUIRED for execution.",
-      audit: "TOOL check_transfer_eligibility · PDP=permit · limit_ok · step_up_required=true",
+      step: 7, agent: "judgement_agent", stage: "eligibility_check", zone: "det",
+      model: null, title: "evaluate_transfer_judgement (EKYC + balance + policy)",
+      tool: "evaluate_transfer_judgement", apim: true,
+      params: { user_id: "U-88231", src_account: "xxx-4471", payee_id: "P-1190", amount: 2000, ekyc_passed: true },
+      detail: "Judgement agent decides the transfer: customer passed EKYC, the remaining balance covers the amount, and the amount is checked against the bank transfer-limit policy. Deterministic, not prompt-driven.",
+      result: "Judgement applied against the active transfer-limit policy.",
+      audit: "TOOL evaluate_transfer_judgement · ekyc=pass · balance_ok · checked vs transfer limit",
       tokens: null
     },
     {
-      step: 7, agent: "banking_controller", stage: "handoff", zone: "det",
+      step: 8, agent: "banking_controller", stage: "handoff", zone: "det",
       model: null, title: "request_transaction_handoff",
       tool: "request_transaction_handoff", apim: true,
       params: { intent: "TRANSFER_MONEY", slots: { amount: 2000, payee_id: "P-1190", src: "xxx-4471" }, policy_result: "permit" },
@@ -239,7 +262,7 @@
         requires_confirmation: true,
         requires_step_up_auth: true,
         money_moved: false,
-        tool_trace: ["get_balance", "resolve_payee", "check_transfer_eligibility", "request_transaction_handoff"]
+        tool_trace: ["confirm_identity", "query_bank_account", "resolve_payee", "evaluate_transfer_judgement", "request_transaction_handoff"]
       }
     }
   ];
@@ -537,6 +560,7 @@
     }
     function next() { paused = false; clearTimer(); advance(); return api; }
     function stop() { clearTimer(); return api; }
+    function pause() { paused = true; clearTimer(); return api; } // hold the flow (e.g. EKYC gate)
     function resume() { // used to clear an HITL pause (approval granted)
       paused = false; emit("step", { resumeFrom: i }); play(); return api;
     }
@@ -547,7 +571,7 @@
     }
     function state() { return { index: i, paused: paused, tokens: live, audit: audit, total: steps.length }; }
 
-    var api = { on: on, play: play, next: next, stop: stop, resume: resume, reset: reset, state: state, steps: steps };
+    var api = { on: on, play: play, next: next, stop: stop, pause: pause, resume: resume, reset: reset, state: state, steps: steps };
     return api;
   }
 
@@ -568,11 +592,20 @@
     aggregate: aggregate,
     scorecard: SCORECARD,
     purview: PURVIEW,
+    bankPolicy: BANK_POLICY,
     // Simulated backend endpoints (drop-in replace with fetch() later)
     getRun: function (key) { return this.runs[key]; },
     getTokens: function () { return this.tokens.slice(); },
     getScorecard: function () { return this.scorecard; },
     getPurview: function () { return this.purview; },
+    getBankPolicy: function () { return this.bankPolicy; },
+    getTransferLimit: function () { return this.bankPolicy.transfer_limit_thb_per_txn; },
+    setTransferLimit: function (n) {
+      var v = Number(n);
+      if (!isFinite(v) || v <= 0) throw new Error("transfer limit must be > 0");
+      this.bankPolicy.transfer_limit_thb_per_txn = v;
+      return this.bankPolicy;
+    },
     player: makePlayer
   };
 

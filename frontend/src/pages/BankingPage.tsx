@@ -17,13 +17,17 @@ import { DspmEventsPanel } from "../components/DspmEventsPanel";
 import {
   DeterministicBoundary,
   DeterministicZone,
+  EkycGate,
   GuardrailBlockBanner,
   HandoffObjectCard,
   ProbabilisticZone,
+  TransferApprovalGate,
 } from "../components/banking";
 import { AuditTrailPanel, RunControls, TokenCounter, ToolCallCard } from "../components/panels";
 import {
   BANK_ACCOUNTS,
+  BANK_CURRENCY,
+  BANK_TRANSFER_LIMIT_THB,
   INITIAL_BALANCES,
   buildBankingRun,
   defaultBankingMessage,
@@ -50,6 +54,11 @@ export function BankingPage() {
   const [fromUserId, setFromUserId] = useState(BANK_ACCOUNTS[0].user_id);
   const [draftMessage, setDraftMessage] = useState(defaultBankingMessage());
   const [submittedMessage, setSubmittedMessage] = useState(defaultBankingMessage());
+  // Adjustable per-transaction transfer-limit gate (THB). Seeded from the bank
+  // policy default; the user can change it to demo the deterministic gate.
+  const [transferLimit, setTransferLimit] = useState(BANK_TRANSFER_LIMIT_THB);
+  const transferLimitRef = useRef(transferLimit);
+  transferLimitRef.current = transferLimit;
 
   // Simulated core-banking ledger: balances + transaction activity.
   const [balances, setBalances] = useState<Record<string, number>>({ ...INITIAL_BALANCES });
@@ -67,6 +76,7 @@ export function BankingPage() {
       fromUserId,
       unsafe: useUnsafe,
       balances: balancesRef.current,
+      transferLimit: transferLimitRef.current,
     });
     setPlan(builtPlan);
     setRun(built);
@@ -77,6 +87,18 @@ export function BankingPage() {
     loadRun(defaultBankingMessage(), false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Rebuild the current run whenever the limit gate changes so the policy
+  // strip, eligibility step, and outcome reflect the new threshold live.
+  const didMountLimit = useRef(false);
+  useEffect(() => {
+    if (!didMountLimit.current) {
+      didMountLimit.current = true;
+      return;
+    }
+    loadRun(submittedMessage, unsafe);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transferLimit]);
 
   useEffect(() => {
     let live = true;
@@ -111,6 +133,16 @@ export function BankingPage() {
     const toAlias = plan.recipient?.alias ?? plan.recipientName ?? "—";
     const amt = plan.amount ?? 0;
 
+    // EKYC identity gate failed (cancelled more than the allowed times). The run
+    // aborts before any account access — log a blocked activity, no money moves.
+    if (player.ekycFailed) {
+      setTxns((prev) => [
+        { id: plan.handoffId, ts, fromAlias, toAlias, amount: amt, status: "blocked", note: "EKYC failed — identity not confirmed; process cancelled." },
+        ...prev,
+      ]);
+      return;
+    }
+
     if (plan.outcome === "permit" && plan.recipient) {
       const recipient = plan.recipient;
       setBalances((prev) => ({
@@ -135,6 +167,27 @@ export function BankingPage() {
         { id: plan.handoffId, ts, fromAlias, toAlias, amount: amt, status: "denied", note: "Denied — insufficient funds." },
         ...prev,
       ]);
+    } else if (plan.outcome === "escalate_approval") {
+      // Over-limit transfer was escalated to a human banker. The downstream
+      // ledger only executes when the banker approved; a rejection is a
+      // logged decline. No money moves until a human decided.
+      if (player.hitlDecision === "approved" && plan.recipient) {
+        const recipient = plan.recipient;
+        setBalances((prev) => ({
+          ...prev,
+          [plan.sender.user_id]: (prev[plan.sender.user_id] ?? 0) - amt,
+          [recipient.user_id]: (prev[recipient.user_id] ?? 0) + amt,
+        }));
+        setTxns((prev) => [
+          { id: plan.handoffId, ts, fromAlias, toAlias, amount: amt, status: "executed", note: "Approved by banker — over-limit transfer executed after step-up confirmation." },
+          ...prev,
+        ]);
+      } else {
+        setTxns((prev) => [
+          { id: plan.handoffId, ts, fromAlias, toAlias, amount: amt, status: "denied", note: `Rejected by banker — over-limit transfer declined (exceeds ${formatTHB(transferLimitRef.current)} ${BANK_CURRENCY}/txn).` },
+          ...prev,
+        ]);
+      }
     } else if (plan.outcome === "condition_failed") {
       setTxns((prev) => [
         { id: plan.handoffId, ts, fromAlias, toAlias, amount: amt, status: "denied", note: "Skipped — balance condition not met." },
@@ -207,7 +260,12 @@ export function BankingPage() {
         title: "Conversational Banking Control",
         subtitle:
           "Natural-language intents are reasoned about in a probabilistic zone, but every action crosses a deterministic boundary: tools run through APIM with scope enforcement and a Policy Decision Point. The agent never moves money — it produces an auditable handoff object that still requires confirmation and step-up auth.",
-        tags: run ? [`run ${run.run_id}`, unsafe ? "unsafe path" : "happy path"] : [],
+        tags: run
+          ? [
+              `run ${run.run_id}`,
+              unsafe ? "unsafe path" : plan?.outcome === "escalate_approval" ? "human approval" : "happy path",
+            ]
+          : [],
       }}
     >
       <main className="page">
@@ -216,6 +274,37 @@ export function BankingPage() {
             <div className="panel">
               <h2>Customer conversation</h2>
               <p className="sub">A mock banking chat. Pick the account you are speaking as, type a request, then press Play to run it. Toggle the unsafe instruction to see deterministic guardrails block it.</p>
+              <div className="policystrip" aria-label="Active transfer policy">
+                <span className="flag limit">Transfer limit · {formatTHB(transferLimit)} {BANK_CURRENCY}/txn</span>
+                <span className="flag ekyc">EKYC required</span>
+              </div>
+              <div className="limitgate">
+                <label htmlFor="limitInput">Adjust transfer-limit gate</label>
+                <div className="limitgate-field">
+                  <input
+                    id="limitInput"
+                    type="number"
+                    min={0}
+                    step={100}
+                    value={transferLimit}
+                    onChange={(e) => setTransferLimit(Math.max(0, Number(e.target.value) || 0))}
+                    aria-label="Transfer limit per transaction in THB"
+                  />
+                  <span className="ccy">{BANK_CURRENCY}/txn</span>
+                </div>
+                <div className="limitgate-presets">
+                  {[1000, 1500, 5000, 20000].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`btn tiny${transferLimit === v ? " active" : ""}`}
+                      onClick={() => setTransferLimit(v)}
+                    >
+                      {formatTHB(v).replace(".00", "")}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="chat">
                 <div className="bubble user">{submittedMessage || defaultBankingMessage()}</div>
                 {c && <div className="bubble agent">{c.result}</div>}
@@ -240,7 +329,7 @@ export function BankingPage() {
                   type="text"
                   value={draftMessage}
                   onChange={(e) => setDraftMessage(e.target.value)}
-                  placeholder="e.g. transfer 2,000 baht to user2"
+                  placeholder="e.g. transfer 1,200 baht to user2"
                   aria-label="Banking message"
                 />
               </form>
@@ -273,9 +362,35 @@ export function BankingPage() {
               <ToolCallCard step={c} />
             </div>
 
-            {player.blocked ? (
+            <EkycGate
+              active={player.status === "awaiting_ekyc"}
+              confirmed={player.ekycConfirmed}
+              failed={player.ekycFailed}
+              cancelCount={player.ekycCancelCount}
+              maxCancels={2}
+              userId={plan?.sender.user_id}
+              onConfirm={player.ekycConfirm}
+              onCancel={player.ekycCancel}
+            />
+
+            {plan?.outcome === "escalate_approval" ? (
+              <TransferApprovalGate
+                active={player.status === "awaiting_approval"}
+                resolved={!!player.hitlDecision && (player.status === "done" || player.status === "blocked")}
+                decision={player.hitlDecision}
+                reason={player.hitlReason}
+                amount={plan.amount ?? 0}
+                limit={transferLimit}
+                currency={BANK_CURRENCY}
+                payeeName={plan.recipient ? `${plan.recipient.display_name} (${plan.recipient.alias})` : plan.recipientName}
+                onApprove={player.approve}
+                onReject={player.reject}
+              />
+            ) : null}
+
+            {player.blocked && !player.ekycFailed ? (
               <GuardrailBlockBanner step={c} guardrailPolicy={governance?.guardrail_policy} />
-            ) : (
+            ) : player.hitlDecision === "rejected" ? null : (
               <HandoffObjectCard handoff={player.handoff} />
             )}
           </div>

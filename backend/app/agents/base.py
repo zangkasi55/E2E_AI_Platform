@@ -99,8 +99,19 @@ class Agent:
         )
         use_mock = settings.mock_mode and not settings.live_llm and not foundry_agent_id
 
-        if foundry_agent_id:
-            operation, target = "invoke_agent", foundry_agent_id
+        # Telemetry correlation id: ALWAYS the provisioned Foundry agent id when
+        # one is mapped (e.g. "memo-orchestrator:3"), independent of the
+        # execution path. Foundry's per-agent Traces tab keys off
+        # ``gen_ai.agent.id``; using the local logical name here (as before) is
+        # why the mock demo produced spans that matched no agent in the portal.
+        telemetry_agent_id = settings.foundry_agent_ids.get(self.name) or self.name
+
+        # Emit an ``invoke_agent`` span (system ``az.ai.agents``) whenever the
+        # agent is provisioned in Foundry — this is what surfaces under the
+        # agent's Traces tab — and fall back to a ``chat`` span only for agents
+        # that have no Foundry mapping yet.
+        if telemetry_agent_id != self.name:
+            operation, target = "invoke_agent", telemetry_agent_id
         else:
             operation, target = "chat", self.model
 
@@ -111,7 +122,7 @@ class Agent:
             model=self.model,
             use_case=self.use_case,
             run_id=run_id,
-            agent_id=foundry_agent_id or self.name,
+            agent_id=telemetry_agent_id,
             identity_client_id=self.identity.client_id,
             identity_role=self.identity.app_role,
         ):

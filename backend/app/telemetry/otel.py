@@ -44,12 +44,18 @@ def configure_telemetry() -> None:
     # a telemetry-setup failure degrades to a no-op instead of crashing startup
     # (this path now runs in the production mock demo, not only in live mode).
     try:
+        import os
+
+        # Stamp a stable service name so Application Insights records a
+        # ``cloud_RoleName`` the Foundry portal can filter by (otherwise spans
+        # arrive as "unknown_service" and are hard to attribute to this app).
+        os.environ.setdefault("OTEL_SERVICE_NAME", "agpoc-aca-orch-dev")
+
         from azure.monitor.opentelemetry import configure_azure_monitor  # type: ignore
         from opentelemetry import metrics, trace  # type: ignore
 
         configure_azure_monitor(
             connection_string=settings.applicationinsights_connection_string,
-            # TODO(copilot): set service.name resource attr to "agpoc-aca-orch-dev".
         )
         _tracer = trace.get_tracer("agpoc.orchestrator")
         _meter = metrics.get_meter("agpoc.orchestrator")
@@ -105,13 +111,29 @@ def start_span(name: str, attributes: Optional[dict] = None):
 # ---------------------------------------------------------------------------
 # Foundry-native GenAI telemetry (OpenTelemetry GenAI semantic conventions).
 #
-# Foundry's project Tracing / Observability view is span-based and recognizes
-# spans that follow the ``gen_ai.*`` semantic conventions. Wrapping every model
-# / agent call in a ``gen_ai`` span (with ``gen_ai.usage.*`` token attributes)
-# makes per-call token usage show up natively in the Foundry portal — fed by the
-# Application Insights connection wired onto the project in foundry.bicep.
+# Foundry's project Tracing / Observability view (and each agent's Traces tab)
+# is span-based and only recognizes spans that follow the documented
+# ``gen_ai.*`` semantic conventions:
+#   * span ``kind`` MUST be CLIENT (INTERNAL spans are not surfaced as GenAI
+#     operations in the portal),
+#   * ``gen_ai.system`` MUST be a recognized provider id — ``az.ai.agents`` for
+#     Foundry Agent Service ``invoke_agent`` calls, ``az.ai.openai`` for direct
+#     Azure OpenAI ``chat`` calls (the previous custom ``az.ai.foundry`` value
+#     was ignored, so no agent showed any traces),
+#   * the span name MUST be ``<operation> <agent-or-model>``,
+#   * per-agent correlation in the portal keys off ``gen_ai.agent.id`` — it must
+#     carry the *Foundry* agent id (e.g. ``memo-orchestrator:3``), not the local
+#     logical name, and must be present even in the mock demo path.
+# These spans are fed into the Application Insights resource wired onto the
+# project in foundry.bicep (the same resource the Container App exports to).
 # ---------------------------------------------------------------------------
-GEN_AI_SYSTEM = "az.ai.foundry"
+GEN_AI_SYSTEM_AGENTS = "az.ai.agents"
+GEN_AI_SYSTEM_OPENAI = "az.ai.openai"
+
+
+def _gen_ai_system_for(operation: str) -> str:
+    """Map a GenAI operation name to its recognized ``gen_ai.system`` provider."""
+    return GEN_AI_SYSTEM_AGENTS if operation == "invoke_agent" else GEN_AI_SYSTEM_OPENAI
 
 
 def start_gen_ai_span(
@@ -129,20 +151,45 @@ def start_gen_ai_span(
     """Start a GenAI-convention span (``<operation> <target>``) for one call.
 
     ``operation`` is ``invoke_agent`` for Foundry Agent Service calls or ``chat``
-    for direct model calls. Returns a null context in mock mode.
+    for direct model calls. The span is emitted as ``SpanKind.CLIENT`` with the
+    documented ``gen_ai.*`` attributes so it surfaces natively in the Foundry
+    portal Tracing view and the per-agent Traces tab. Returns a null context in
+    mock mode (no exporter configured).
     """
     if _tracer is None:
         from contextlib import nullcontext
 
         return nullcontext()
+    from opentelemetry.trace import SpanKind  # type: ignore
+
+    resolved_agent_id = agent_id or agent
+    server_address = ""
+    try:  # endpoint host, for the GenAI ``server.address`` convention
+        from urllib.parse import urlparse
+
+        from ..config import settings as _settings
+
+        raw_endpoint = (
+            _settings.foundry_project_endpoint
+            if operation == "invoke_agent"
+            else _settings.azure_openai_endpoint
+        )
+        server_address = urlparse(raw_endpoint).netloc if raw_endpoint else ""
+    except Exception:  # pragma: no cover - never break telemetry on parse
+        server_address = ""
     return _tracer.start_as_current_span(
         f"{operation} {target}",
+        kind=SpanKind.CLIENT,
         attributes={
-            "gen_ai.system": GEN_AI_SYSTEM,
+            "gen_ai.system": _gen_ai_system_for(operation),
             "gen_ai.operation.name": operation,
             "gen_ai.request.model": model,
+            "gen_ai.agent.id": resolved_agent_id,
             "gen_ai.agent.name": agent,
-            "agent.id": agent_id or agent,
+            "gen_ai.thread.id": run_id,
+            "server.address": server_address,
+            # Custom dimensions retained for the token-monitor / audit views.
+            "agent.id": resolved_agent_id,
             "agent.identity.client_id": identity_client_id or "",
             "agent.identity.role": identity_role or "",
             "use_case": use_case,
