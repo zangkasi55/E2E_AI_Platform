@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UC1 · Credit Memo Drafting Agent — Agent Flow</title>
+<style>
+  :root{
+    --agent:#0B5CAB; --agent2:#2E7DD1; --model:#5B2D8E; --tool:#0E7C7B;
+    --data:#2E7D32; --gov:#7A1FA2; --obs:#C25E00; --sec:#1A4E8A; --channel:#37474F;
+    --blocked:#B3261E; --ok:#2E7D32; --ink:#1A1A1A; --muted:#5F6B7A;
+    --bg:#F3F6FB; --card:#FFFFFF; --line:#E2E8F2;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.07);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--agent);text-decoration:none}
+  .topbar{background:#0B2A4A;color:#fff;padding:12px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .topbar .crumb{font-size:13px;color:#BFD3EC}
+  .topbar .crumb b{color:#fff}
+  .topbar .spacer{flex:1}
+  .topbar .tag{font-size:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);
+    padding:5px 10px;border-radius:6px}
+  .hero{padding:20px 22px 6px}
+  .hero h1{margin:0 0 4px;font-size:23px}
+  .hero p{margin:0;color:var(--muted);font-size:14px}
+  .layout{display:grid;grid-template-columns:1fr 384px;gap:18px;padding:14px 22px 40px;align-items:start}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  .panel .ph{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .panel .ph h2{margin:0;font-size:14px;font-weight:700;letter-spacing:.02em}
+  .panel .ph .sub{font-size:12px;color:var(--muted);margin-left:auto}
+  .pad{padding:16px}
+
+  /* ---- Controls ---- */
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  button.btn{font:inherit;font-size:13px;font-weight:600;border-radius:8px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);padding:9px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  button.btn:hover{border-color:#C9D6EC;background:#F8FAFD}
+  button.btn.primary{background:var(--agent);border-color:var(--agent);color:#fff}
+  button.btn.primary:hover{background:#0A4F93}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  .runstate{font-size:12px;color:var(--muted);margin-left:auto}
+  .runstate b{color:var(--ink)}
+
+  /* ---- Parent banner ---- */
+  .parent{display:flex;align-items:center;gap:14px;border:1.5px solid var(--line);border-radius:12px;
+    padding:12px 14px;background:linear-gradient(180deg,#fff, #FAFCFF);margin-bottom:14px;position:relative}
+  .parent .badge{width:42px;height:42px;border-radius:10px;background:var(--agent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:none}
+  .parent .pname{font-weight:700;font-size:15px}
+  .parent .pmeta{font-size:12px;color:var(--muted)}
+  .parent.active{border-color:var(--agent);box-shadow:0 0 0 4px rgba(11,92,171,.14)}
+  .parent .working{margin-left:auto}
+
+  /* ---- Pipeline of sub-agent nodes ---- */
+  .pipe{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:6px 2px 10px}
+  .node{flex:1 1 0;min-width:128px;display:flex;flex-direction:column;align-items:center;position:relative}
+  .node .conn{position:absolute;top:34px;left:-50%;width:100%;height:3px;background:var(--line);z-index:0}
+  .node:first-child .conn{display:none}
+  .node.donepath .conn{background:var(--ok)}
+  .ncircle{width:68px;height:68px;border-radius:16px;background:#EEF2F8;border:2px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--muted);
+    position:relative;z-index:1;transition:all .25s ease;font-size:20px}
+  .nlabel{margin-top:9px;font-size:12.5px;font-weight:700;text-align:center;color:var(--ink)}
+  .nrole{font-size:11px;color:var(--muted);text-align:center;margin-top:2px}
+  .nstate{margin-top:7px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    padding:3px 8px;border-radius:999px;color:var(--muted);background:#EEF2F8;border:1px solid var(--line)}
+  /* states */
+  .node.pending .ncircle{opacity:.5}
+  .node.pending .nlabel,.node.pending .nrole{opacity:.55}
+  .node.done .ncircle{background:#E7F4EA;border-color:var(--ok);color:var(--ok)}
+  .node.done .nstate{color:#fff;background:var(--ok);border-color:var(--ok)}
+  .node.working .ncircle{background:var(--agent2);border-color:var(--agent);color:#fff;
+    box-shadow:0 0 0 0 rgba(11,92,171,.45);animation:pulse 1.4s infinite}
+  .node.working .nlabel{color:var(--agent)}
+  .node.working .nstate{color:#fff;background:var(--agent);border-color:var(--agent);
+    animation:blink 1.1s steps(2,start) infinite}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(11,92,171,.45)}
+    70%{box-shadow:0 0 0 14px rgba(11,92,171,0)}
+    100%{box-shadow:0 0 0 0 rgba(11,92,171,0)}}
+  @keyframes blink{50%{opacity:.55}}
+  .node.special .ncircle{border-radius:50%}
+  .node.hitl.working .ncircle{background:var(--obs);border-color:#9A4A00;
+    box-shadow:0 0 0 0 rgba(194,94,0,.5);animation:pulseO 1.4s infinite}
+  .node.hitl.working .nstate{background:var(--obs);border-color:var(--obs)}
+  .node.hitl.working .nlabel{color:var(--obs)}
+  @keyframes pulseO{0%{box-shadow:0 0 0 0 rgba(194,94,0,.5)}70%{box-shadow:0 0 0 14px rgba(194,94,0,0)}100%{box-shadow:0 0 0 0 rgba(194,94,0,0)}}
+  .node.final.done .ncircle{background:#E7F4EA}
+  .node.decline.done .ncircle{background:#FBEAEA;border-color:var(--blocked);color:var(--blocked)}
+  .node.decline.done .nstate{color:#fff;background:var(--blocked);border-color:var(--blocked)}
+
+  /* ---- Workflow graph (Foundry declarative CSDL topology) ---- */
+  .wf{display:flex;flex-direction:column;align-items:center;gap:0;padding:8px 2px 6px}
+  .wf .node{flex:0 0 150px;min-width:150px}
+  .wf .node .conn{display:none}
+  .wfrow{display:flex;justify-content:center;align-items:flex-start;gap:34px}
+  .wfconn{width:3px;height:22px;background:var(--line);position:relative}
+  .wfconn.done{background:var(--ok)}
+  .wfgroup{border:1.5px dashed #C9D6EC;border-radius:14px;padding:10px 16px 12px;position:relative;
+    background:linear-gradient(180deg,#FAFCFF,#fff)}
+  .wfgroup .wftag{position:absolute;top:-10px;left:14px;background:#fff;border:1px solid #C9D6EC;
+    border-radius:999px;padding:2px 10px;font-size:10.5px;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--agent)}
+  .wfgroup.branch{border-color:#E6C28F;background:linear-gradient(180deg,#FFFBF4,#fff)}
+  .wfgroup.branch .wftag{border-color:#E6C28F;color:#8A4400}
+  .wflanes{display:flex;gap:30px;align-items:flex-start}
+  .wfedge{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;margin-bottom:4px}
+  .wfedge.approve{color:var(--ok)}
+  .wfedge.reject{color:var(--blocked)}
+  .wftrigger{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+    background:#EEF2F8;border:1px solid var(--line);border-radius:999px;padding:5px 14px}
+
+  /* ---- Step detail card ---- */
+  .stepcard{border:1px solid var(--line);border-radius:12px;padding:0;overflow:hidden;margin-top:6px}
+  .stepcard .sh{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#F8FAFD;border-bottom:1px solid var(--line)}
+  .stepcard .sh .stepno{width:26px;height:26px;border-radius:7px;background:var(--agent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+  .stepcard .sh .stitle{font-weight:700;font-size:14px}
+  .stepcard .sh .who{margin-left:auto;font-size:12px;color:var(--muted);text-align:right}
+  .stepcard .sb{padding:14px}
+  .stepcard .sdetail{font-size:13.5px;color:#384150;margin:0 0 12px}
+  .toolrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+  .badge{font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:7px;border:1px solid transparent}
+  .b-tool{background:#E4F1F0;color:#0A5A59;border-color:#BBE0DE}
+  .b-apim{background:#EAF1FB;color:#0A4F93;border-color:#CADCF4}
+  .b-model{background:#F0EAF6;color:#46226E;border-color:#DDCBEE}
+  .b-none{background:#EEF2F8;color:var(--muted);border-color:var(--line)}
+  .b-hitl{background:#FCEEDF;color:#8A4400;border-color:#F2D2B0}
+  .params{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:#0F1B2D;
+    color:#D6E2F2;border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre;margin:0 0 12px}
+  .result{border-left:3px solid var(--ok);background:#F2F9F4;padding:9px 12px;border-radius:0 8px 8px 0;
+    font-size:13px;color:#234a2c}
+  .empty{color:var(--muted);font-size:13px;text-align:center;padding:26px 10px}
+
+  /* ---- HITL approval bar ---- */
+  .hitlbar{margin-top:14px;border:1.5px solid var(--obs);background:#FFF8F1;border-radius:12px;padding:14px;display:none}
+  .hitlbar.show{display:block}
+  .hitlbar .hh{display:flex;align-items:center;gap:10px;font-weight:700;color:#8A4400;margin-bottom:6px}
+  .hitlbar .dot{width:10px;height:10px;border-radius:50%;background:var(--obs);animation:blink 1s infinite}
+  .hitlbar p{margin:0 0 12px;font-size:13px;color:#5b4630}
+  .hitlbar label{display:block;font-size:12px;color:#7B6145;font-weight:700;margin:0 0 6px}
+  .hitlbar textarea{width:100%;min-height:72px;border:1px solid #E3C8A8;border-radius:8px;padding:8px 10px;
+    font:inherit;color:#4B3E2F;background:#fff;resize:vertical;margin:0 0 8px}
+  .hitlbar textarea:focus{outline:2px solid #f0c89f;outline-offset:0}
+  .hitlbar .err{display:none;font-size:12px;color:#A12222;font-weight:700;margin:0 0 10px}
+  .hitlbar .err.show{display:block}
+  .hitlbar .acts{display:flex;gap:10px;flex-wrap:wrap}
+  button.approve{background:var(--ok);border-color:var(--ok);color:#fff}
+  button.approve:hover{background:#256B2A}
+  button.reject{background:#fff;border-color:#E3B98A;color:#8A4400}
+  .decisionnote{display:none;margin-top:10px;font-size:12.5px;color:#8A4400;background:#FDEFE0;
+    border:1px dashed #E3B98A;border-radius:8px;padding:8px 10px}
+  .decisionnote.show{display:block}
+
+  /* ---- Right column ---- */
+  .token{display:flex;flex-direction:column;gap:10px}
+  .tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .tcell{border:1px solid var(--line);border-radius:10px;padding:11px;text-align:center;background:#FBFDFF}
+  .tcell .k{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .tcell .v{font-size:21px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  .tcell.total{border-color:#CADCF4;background:#EAF1FB}
+  .tcell.total .v{color:var(--agent)}
+  .tmeta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .consumer{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);
+    border-radius:9px;background:#FBFDFF}
+  .consumer .mc{width:9px;height:9px;border-radius:3px;flex:none}
+  .cost{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+
+  .audit{max-height:420px;overflow-y:auto;padding:8px 10px}
+  .arow{display:flex;gap:10px;padding:9px 8px;border-bottom:1px dashed var(--line);font-size:12.5px}
+  .arow:last-child{border-bottom:0}
+  .arow .an{width:22px;height:22px;border-radius:6px;background:var(--obs);color:#fff;flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+  .arow .at{color:#36404e;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;word-break:break-word}
+  .arow.audit-new{animation:slidein .4s ease}
+  @keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+  .legend-mini{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+  .legend-mini span{display:inline-flex;align-items:center;gap:6px}
+  .lg{width:12px;height:12px;border-radius:4px;display:inline-block}
+
+  @media (max-width:980px){.layout{grid-template-columns:1fr}}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:Product_x0020_category msdt:dt="string">Credit Memo</mso:Product_x0020_category>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<div class="topbar">
+  <span class="crumb"><a href="index.html" style="color:#BFD3EC">Demo Hub</a> / <b>UC1 · Credit Memo Drafting Agent</b></span>
+  <span class="spacer"></span>
+  <span class="tag">read-only · HITL</span>
+  <span class="tag">workflow <code>credit-memo-workflow</code></span>
+  <span class="tag">run <span id="runId">—</span></span>
+  <span class="tag">APP-1001 · Siam Lotus Foods</span>
+</div>
+
+<div class="hero">
+  <h1>Credit memo — Foundry declarative workflow</h1>
+  <p>This runs as a <b>Microsoft Agent Framework workflow</b> (<code>credit-memo-workflow</code>): the
+    <code>memo-orchestrator</code> plans, sub-agents execute, and two analysts run <b>in parallel</b> before the
+    memo is assembled. The workflow pauses at a <b>Question</b> node for a human reviewer, then a
+    <b>condition branch</b> finalizes or declines. The highlighted node is the step running right now.</p>
+</div>
+
+<div class="layout">
+  <!-- LEFT: flow + step detail + HITL -->
+  <section class="panel">
+    <div class="ph">
+      <h2>Workflow graph</h2>
+      <span class="sub" id="phaseLabel">idle</span>
+    </div>
+    <div class="pad">
+      <div class="controls">
+        <button class="btn primary" id="playBtn">▶ Play run</button>
+        <button class="btn" id="stepBtn">Step ▸</button>
+        <button class="btn" id="resetBtn">↺ Reset</button>
+        <span class="runstate">Step <b id="stepIdx">0</b> / <b id="stepTotal">7</b> · <b id="statusTxt">ready</b></span>
+      </div>
+
+      <!-- Parent orchestrator banner -->
+      <div class="parent" id="parentBanner">
+        <div class="badge">ORCH</div>
+        <div>
+          <div class="pname">memo_orchestrator</div>
+          <div class="pmeta">Parent orchestrator · plans &amp; delegates · owns the HITL gate</div>
+        </div>
+        <div class="working" id="parentWorking"></div>
+      </div>
+
+      <!-- Declarative workflow graph (parallel fan-out + Question + condition branch) -->
+      <div class="wf" id="wfGraph"></div>
+
+      <div class="legend-mini">
+        <span><i class="lg" style="background:var(--agent2)"></i>working</span>
+        <span><i class="lg" style="background:var(--ok)"></i>done</span>
+        <span><i class="lg" style="background:#EEF2F8;border:1px solid var(--line)"></i>pending</span>
+        <span><i class="lg" style="background:var(--obs)"></i>HITL Question</span>
+        <span><i class="lg" style="background:var(--blocked)"></i>declined branch</span>
+      </div>
+
+      <!-- Current step detail -->
+      <div class="stepcard" id="stepCard" style="margin-top:14px">
+        <div class="sb"><div class="empty">Press <b>Play run</b> to start the simulated orchestration.</div></div>
+      </div>
+
+      <!-- HITL approval bar -->
+      <div class="hitlbar" id="hitlBar">
+        <div class="hh"><span class="dot"></span> Awaiting human approval (Durable Functions HITL)</div>
+        <p>The draft memo is routed to a reviewer in Teams. <b>Agent drafts, human decides.</b> No memo is final
+          without approval.</p>
+        <label for="reviewerNote">Reviewer note (required for reject, optional for approve)</label>
+        <textarea id="reviewerNote" placeholder="Enter reviewer reason or note..."></textarea>
+        <div class="err" id="reviewerErr">Please provide a rejection reason.</div>
+        <div class="acts">
+          <button class="btn approve" id="approveBtn">✓ Approve &amp; finalize</button>
+          <button class="btn reject" id="rejectBtn">✕ Reject</button>
+        </div>
+        <div class="decisionnote" id="decisionNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: token counter + audit trail -->
+  <aside style="display:flex;flex-direction:column;gap:18px">
+    <section class="panel">
+      <div class="ph"><h2>Token usage</h2><span class="sub">live · per run</span></div>
+      <div class="pad token">
+        <div class="tgrid">
+          <div class="tcell"><div class="k">Prompt</div><div class="v" id="tkPrompt">0</div></div>
+          <div class="tcell"><div class="k">Completion</div><div class="v" id="tkComp">0</div></div>
+          <div class="tcell total"><div class="k">Total</div><div class="v" id="tkTotal">0</div></div>
+        </div>
+        <div class="consumer">
+          <span class="mc" id="consumerDot" style="background:var(--muted)"></span>
+          <span id="consumerTxt">No model call yet</span>
+          <span class="cost" id="costTxt">$0.0000</span>
+        </div>
+        <div class="tmeta">Records emitted to Cosmos <code>tokens</code> + App Insights <code>gen_ai.token.usage</code>.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><h2>Audit trail</h2><span class="sub" id="auditCount">0 records</span></div>
+      <div class="audit" id="auditList">
+        <div class="empty">Each step appends a structured audit record here.</div>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var A = window.AGPOC;
+  var run = A.getRun("credit_memo");
+  document.getElementById("runId").textContent = run.run_id;
+  document.getElementById("stepTotal").textContent = run.steps.length;
+
+  // Workflow nodes (mirror the credit-memo-workflow CSDL executors).
+  // Parent orchestrator (plan) shown in the banner above as the workflow start.
+  var NODES = [
+    { id:"doc_retrieval",   label:"retrieve_docs",    role:"doc-retrieval",     glyph:"DR" },
+    { id:"financial_ratio", label:"analyze_ratios",   role:"financial-ratio",   glyph:"FR" },
+    { id:"bureau_summary",  label:"summarize_bureau", role:"bureau-summary",    glyph:"BS" },
+    { id:"memo_assembler",  label:"assemble_memo",    role:"memo-assembler",    glyph:"MA" },
+    { id:"hitl",            label:"human_approval",   role:"Question · HITL",   glyph:"⛛", cls:"hitl special" },
+    { id:"final",           label:"finalize_memo",    role:"approve branch",    glyph:"✓", cls:"final special" },
+    { id:"decline",         label:"decline_memo",     role:"reject branch",     glyph:"✕", cls:"final special decline" }
+  ];
+  var NODE_BY = {}; NODES.forEach(function(n){ NODE_BY[n.id]=n; });
+
+  // Map each step to a workflow node id (or "parent" for the orchestrator/plan step)
+  function nodeForStep(s){
+    if(s.phase==="plan") return "parent";
+    if(s.phase==="hitl") return "hitl";
+    if(s.phase==="final") return "final";
+    return s.agent; // sub-agent steps
+  }
+
+  // ---- build the workflow graph (parallel fan-out + Question + condition branch) ----
+  var wf = document.getElementById("wfGraph");
+  function makeNode(id){
+    var n = NODE_BY[id];
+    var el = document.createElement("div");
+    el.className = "node pending " + (n.cls||"");
+    el.id = "node-"+n.id;
+    el.innerHTML =
+      '<div class="ncircle">'+n.glyph+'</div>'+
+      '<div class="nlabel">'+n.label+'</div>'+
+      '<div class="nrole">'+n.role+'</div>'+
+      '<div class="nstate">pending</div>';
+    return el;
+  }
+  function conn(){ var c=document.createElement("div"); c.className="wfconn"; return c; }
+  function lane(edgeHtml, edgeCls, nodeId){
+    var l=document.createElement("div");
+    if(edgeHtml) l.innerHTML='<div class="wfedge '+(edgeCls||"")+'">'+edgeHtml+'</div>';
+    l.appendChild(makeNode(nodeId));
+    return l;
+  }
+  (function buildGraph(){
+    var trig=document.createElement("div"); trig.className="wftrigger";
+    trig.textContent="▶ OnConversationStart"; wf.appendChild(trig);
+    wf.appendChild(conn());
+    wf.appendChild(makeNode("doc_retrieval"));
+    wf.appendChild(conn());
+    // parallel concurrent block
+    var pg=document.createElement("div"); pg.className="wfgroup";
+    pg.innerHTML='<span class="wftag">Parallel · concurrent</span>';
+    var plan=document.createElement("div"); plan.className="wflanes";
+    plan.appendChild(makeNode("financial_ratio"));
+    plan.appendChild(makeNode("bureau_summary"));
+    pg.appendChild(plan); wf.appendChild(pg);
+    wf.appendChild(conn());
+    wf.appendChild(makeNode("memo_assembler"));
+    wf.appendChild(conn());
+    wf.appendChild(makeNode("hitl"));
+    wf.appendChild(conn());
+    // condition branch block
+    var bg=document.createElement("div"); bg.className="wfgroup branch";
+    bg.innerHTML='<span class="wftag">Condition · reviewer_approved</span>';
+    var blanes=document.createElement("div"); blanes.className="wflanes";
+    blanes.appendChild(lane("approve →","approve","final"));
+    blanes.appendChild(lane("reject →","reject","decline"));
+    bg.appendChild(blanes); wf.appendChild(bg);
+  })();
+
+  var parentBanner = document.getElementById("parentBanner");
+  var parentWorking = document.getElementById("parentWorking");
+
+  function setNodeState(id, state){
+    var el = document.getElementById("node-"+id);
+    if(!el) return;
+    el.classList.remove("pending","working","done");
+    el.classList.add(state);
+    var st = el.querySelector(".nstate");
+    st.textContent = state==="working" ? "working…" : state;
+    if(state==="done") el.classList.add("donepath");
+  }
+  function setParent(state){
+    parentBanner.classList.toggle("active", state==="working");
+    parentWorking.innerHTML = state==="working"
+      ? '<span class="badge b-hitl">working…</span>'
+      : (state==="done" ? '<span class="badge b-tool">✓ active gate</span>' : '');
+  }
+
+  // ---- step rendering ----
+  var stepCard = document.getElementById("stepCard");
+  function renderStep(s){
+    var who = (s.model? '<span class="badge b-model">'+s.model+'</span>' : '<span class="badge b-none">no model call</span>');
+    var tool = "";
+    if(s.tool){
+      tool += '<span class="badge b-tool">'+s.tool+' '+A.TOOLS[s.tool].sig+'</span>';
+      if(s.chainTool) tool += '<span class="badge b-tool">+ '+s.chainTool+'</span>';
+    }
+    if(s.apim) tool += '<span class="badge b-apim">via APIM · scope-checked</span>';
+    if(s.phase==="hitl") tool += '<span class="badge b-hitl">Durable Functions · HITL pause</span>';
+    if(!s.tool && s.phase!=="hitl" && s.phase!=="final") tool += '<span class="badge b-none">planning · no tool</span>';
+
+    var params = s.params ? '<div class="params">'+JSON.stringify(s.params,null,2)+'</div>' : '';
+    stepCard.innerHTML =
+      '<div class="sh">'+
+        '<div class="stepno">'+s.step+'</div>'+
+        '<div class="stitle">'+s.title+'</div>'+
+        '<div class="who"><b>'+s.agent+'</b><br>'+who+'</div>'+
+      '</div>'+
+      '<div class="sb">'+
+        '<p class="sdetail">'+s.detail+'</p>'+
+        '<div class="toolrow">'+tool+'</div>'+
+        params+
+        '<div class="result">'+s.result+'</div>'+
+      '</div>';
+  }
+
+  // ---- token counter ----
+  var live = { prompt:0, completion:0, total:0 };
+  var tkP=document.getElementById("tkPrompt"), tkC=document.getElementById("tkComp"), tkT=document.getElementById("tkTotal");
+  var costEl=document.getElementById("costTxt"), consumerTxt=document.getElementById("consumerTxt"),
+      consumerDot=document.getElementById("consumerDot");
+  var runningCost=0;
+  function animateTo(el, from, to){
+    var start=performance.now(), dur=600;
+    function frame(now){
+      var k=Math.min(1,(now-start)/dur);
+      var val=Math.round(from+(to-from)*(1-Math.pow(1-k,3)));
+      el.textContent=val.toLocaleString();
+      if(k<1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  function applyTokens(s){
+    if(!s.tokens || !s.model) return;
+    var p0=live.prompt,c0=live.completion,t0=live.total;
+    live.prompt+=s.tokens.prompt; live.completion+=s.tokens.completion; live.total=live.prompt+live.completion;
+    animateTo(tkP,p0,live.prompt); animateTo(tkC,c0,live.completion); animateTo(tkT,t0,live.total);
+    var cost=A.estCost(s.model,s.tokens.prompt,s.tokens.completion); runningCost+=cost;
+    costEl.textContent="$"+runningCost.toFixed(4);
+    consumerDot.style.background = s.model==="gpt-4o" ? "var(--model)" : "#8A6DB3";
+    consumerTxt.innerHTML='<b>'+s.agent+'</b> · '+s.model+' · +'+(s.tokens.prompt+s.tokens.completion).toLocaleString()+' tok';
+  }
+
+  // ---- audit trail ----
+  var auditList=document.getElementById("auditList"), auditCount=document.getElementById("auditCount");
+  var auditN=0;
+  function pushAudit(text){
+    if(auditN===0) auditList.innerHTML="";
+    auditN++;
+    var row=document.createElement("div");
+    row.className="arow audit-new";
+    row.innerHTML='<div class="an">'+auditN+'</div><div class="at">'+text+'</div>';
+    auditList.appendChild(row);
+    auditList.scrollTop=auditList.scrollHeight;
+    auditCount.textContent=auditN+" record"+(auditN===1?"":"s");
+  }
+
+  // ---- player wiring ----
+  var player = A.player(run.steps, { interval: 1900 });
+  var playBtn=document.getElementById("playBtn"), stepBtn=document.getElementById("stepBtn"),
+      resetBtn=document.getElementById("resetBtn"), statusTxt=document.getElementById("statusTxt"),
+      stepIdx=document.getElementById("stepIdx"), phaseLabel=document.getElementById("phaseLabel");
+  var hitlBar=document.getElementById("hitlBar"), approveBtn=document.getElementById("approveBtn"),
+      rejectBtn=document.getElementById("rejectBtn"), decisionNote=document.getElementById("decisionNote"),
+      reviewerNote=document.getElementById("reviewerNote"), reviewerErr=document.getElementById("reviewerErr");
+  var activeNode=null, playing=false;
+
+  function markActive(nodeId){
+    if(activeNode && activeNode!=="parent" && activeNode!==nodeId) setNodeState(activeNode,"done");
+    if(activeNode==="parent" && nodeId!=="parent") setParent("done");
+    if(nodeId==="parent"){ setParent("working"); }
+    else { setParent(activeNode==="parent" ? "done":"none"); setNodeState(nodeId,"working"); }
+    activeNode=nodeId;
+  }
+
+  player.on("step", function(e){
+    if(e.resumeFrom!==undefined) return;
+    var s=e.step;
+    stepIdx.textContent=e.index+1;
+    phaseLabel.textContent=s.title;
+    statusTxt.textContent = s.hitl ? "awaiting approval" : (s.phase==="final" ? "finalized" : "running");
+    markActive(nodeForStep(s));
+    renderStep(s);
+    applyTokens(s);
+    pushAudit(s.audit);
+    if(s.phase==="final"){ setNodeState("final","done"); }
+  });
+  player.on("pause", function(e){
+    playing=false; playBtn.textContent="▶ Play run"; playBtn.disabled=true; stepBtn.disabled=true;
+    hitlBar.classList.add("show");
+    // mark assembler done, HITL node working
+    setNodeState("memo_assembler","done");
+    setNodeState("hitl","working");
+    activeNode="hitl";
+  });
+  player.on("done", function(e){
+    playing=false; playBtn.textContent="▶ Play run"; playBtn.disabled=true; stepBtn.disabled=true;
+    statusTxt.textContent="complete";
+  });
+  player.on("reset", function(){
+    NODES.forEach(function(n){ var el=document.getElementById("node-"+n.id);
+      el.className="node pending "+(n.cls||""); el.querySelector(".nstate").textContent="pending"; });
+    setParent("none"); activeNode=null;
+    live={prompt:0,completion:0,total:0}; runningCost=0; auditN=0;
+    tkP.textContent="0"; tkC.textContent="0"; tkT.textContent="0"; costEl.textContent="$0.0000";
+    consumerTxt.textContent="No model call yet"; consumerDot.style.background="var(--muted)";
+    auditList.innerHTML='<div class="empty">Each step appends a structured audit record here.</div>';
+    auditCount.textContent="0 records";
+    stepCard.innerHTML='<div class="sb"><div class="empty">Press <b>Play run</b> to start the simulated orchestration.</div></div>';
+    stepIdx.textContent="0"; statusTxt.textContent="ready"; phaseLabel.textContent="idle";
+    hitlBar.classList.remove("show");
+    decisionNote.classList.remove("show");
+    decisionNote.textContent="";
+    reviewerNote.value="";
+    reviewerErr.classList.remove("show");
+    approveBtn.disabled=false;
+    rejectBtn.disabled=false;
+    playBtn.disabled=false; stepBtn.disabled=false; playBtn.textContent="▶ Play run"; playing=false;
+  });
+
+  playBtn.addEventListener("click", function(){
+    if(playing){ player.stop(); playing=false; playBtn.textContent="▶ Resume"; return; }
+    playing=true; playBtn.textContent="❚❚ Pause"; player.play();
+  });
+  stepBtn.addEventListener("click", function(){ player.stop(); playing=false; playBtn.textContent="▶ Resume"; player.next(); });
+  resetBtn.addEventListener("click", function(){ player.reset(); });
+
+  approveBtn.addEventListener("click", function(){
+    var note = reviewerNote.value.trim();
+    reviewerErr.classList.remove("show");
+    hitlBar.classList.remove("show");
+    setNodeState("hitl","done");
+    decisionNote.innerHTML = note
+      ? ('Approved by reviewer. Note: <b>'+note.replace(/</g,"&lt;")+'</b>')
+      : 'Approved by reviewer.';
+    decisionNote.classList.add("show");
+    pushAudit('HITL decision=APPROVE' + (note ? (' · reviewer_note=' + note) : ''));
+    statusTxt.textContent="approved · finalizing";
+    playBtn.disabled=true; stepBtn.disabled=true;
+    player.resume(); // resumes Durable Functions → final step
+  });
+  rejectBtn.addEventListener("click", function(){
+    var note = reviewerNote.value.trim();
+    if(!note){ reviewerErr.classList.add("show"); return; }
+    reviewerErr.classList.remove("show");
+    hitlBar.classList.remove("show");
+    setNodeState("hitl","done");
+    setNodeState("decline","done");
+    decisionNote.innerHTML = 'Rejected by reviewer. Reason: <b>'+note.replace(/</g,"&lt;")+'</b>';
+    decisionNote.classList.add("show");
+    pushAudit('HITL decision=REJECT · reviewer_reason=' + note);
+    statusTxt.textContent="rejected";
+    approveBtn.disabled=true;
+    rejectBtn.disabled=true;
+    playBtn.disabled=true;
+    stepBtn.disabled=true;
+  });
+})();
+</script>
+</body>
+</html>
